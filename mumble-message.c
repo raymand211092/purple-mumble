@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mumblemessage.h"
+#include "mumble-message.h"
 
 ProtobufCMessageDescriptor *typeToDescriptor[] = {
   &mumble_proto__version__descriptor,

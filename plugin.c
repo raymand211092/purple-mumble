@@ -21,7 +21,7 @@
 #include <purple-gio.h>
 #include <queuedoutputstream.h>
 #include <glib.h>
-#include "mumblemessage.h"
+#include "mumble-message.h"
 
 struct mumble_protocol_data {
   PurpleQueuedOutputStream *outputStream;
