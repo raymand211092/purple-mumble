@@ -17,7 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "mumblemessage.h"
+#include "mumble-message.h"
 
 ProtobufCMessageDescriptor *typeToDescriptor[] = {
   &mumble_proto__version__descriptor,
@@ -80,9 +80,9 @@ gint mumble_message_write(MumbleMessage *message, guint8 *buffer) {
 
   buffer[0] = 0;
   buffer[1] = message->type;
-  buffer[2] = packedSize << 24;
-  buffer[3] = packedSize << 16;
-  buffer[4] = packedSize << 8;
+  buffer[2] = packedSize >> 24;
+  buffer[3] = packedSize >> 16;
+  buffer[4] = packedSize >> 8;
   buffer[5] = packedSize;
 
   return 6 + protobuf_c_message_pack(message->payload, buffer + 6);
