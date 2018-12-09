@@ -22,12 +22,12 @@
 #include "mumble-protocol.h"
 #include "mumble-message.h"
 
-struct mumble_protocol_data {
+typedef struct {
   PurpleQueuedOutputStream *outputStream;
   GInputStream *inputStream;
   guint8 *inputBuffer;
   gint inputBufferIndex;
-};
+} MumbleProtocolData;
 
 static void mumble_protocol_init(PurpleProtocol *);
 static void mumble_protocol_class_init(PurpleProtocolClass *);
@@ -45,7 +45,7 @@ static gboolean on_keepalive(gpointer);
 static void on_connected(GObject *, GAsyncResult *, gpointer);
 static void read_asynchronously(PurpleConnection *, gint);
 static void on_read(GObject *, GAsyncResult *, gpointer);
-static void write_mumble_message(struct mumble_protocol_data *, MumbleMessageType, ProtobufCMessage *);
+static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, ProtobufCMessage *);
 static void on_mumble_message_written(GObject *, GAsyncResult *, gpointer);
 
 static void mumble_protocol_init(PurpleProtocol *protocol) {
@@ -68,8 +68,8 @@ static void mumble_protocol_login(PurpleAccount *account) {
   
   PurpleConnection *connection = purple_account_get_connection(account);
   
-  struct mumble_protocol_data *protocol_data = g_new0(struct mumble_protocol_data, 1);
-  purple_connection_set_protocol_data(connection, protocol_data);
+  MumbleProtocolData *protocolData = g_new0(MumbleProtocolData, 1);
+  purple_connection_set_protocol_data(connection, protocolData);
   
   GError *error;
   GSocketClient *client = purple_gio_socket_client_new(account, &error);
@@ -103,7 +103,7 @@ static const char *mumble_protocol_list_icon(PurpleAccount *account, PurpleBuddy
 
 static gboolean on_keepalive(gpointer data) {
   PurpleConnection *connection = data;
-  struct mumble_protocol_data *protocolData = purple_connection_get_protocol_data(connection);
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
   write_mumble_message(protocolData, MUMBLE_PING, (ProtobufCMessage *) &pingMessage);
@@ -115,7 +115,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   fprintf(stderr, "on_connected()\n");
 
   PurpleConnection *purpleConnection = data;
-  struct mumble_protocol_data *protocolData = purple_connection_get_protocol_data(purpleConnection);
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(purpleConnection);
   
   GError *error = NULL;
   GSocketConnection *socketConnection = g_socket_client_connect_to_host_finish(G_SOCKET_CLIENT(source), result, &error);
@@ -151,13 +151,13 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
 }
 
 static void read_asynchronously(PurpleConnection *connection, gint count) {
-  struct mumble_protocol_data *protocolData = purple_connection_get_protocol_data(connection);
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   g_input_stream_read_async(protocolData->inputStream, protocolData->inputBuffer + protocolData->inputBufferIndex, count, G_PRIORITY_DEFAULT, NULL, on_read, connection);
 }
 
 static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   PurpleConnection *connection = data;
-  struct mumble_protocol_data *protocolData = purple_connection_get_protocol_data(connection);
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   GError *error = NULL;
   gssize count = g_input_stream_read_finish(protocolData->inputStream, result, &error);
@@ -278,7 +278,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   read_asynchronously(connection, nextCount);
 }
 
-static void write_mumble_message(struct mumble_protocol_data *protocolData, MumbleMessageType type, ProtobufCMessage *payload) {
+static void write_mumble_message(MumbleProtocolData *protocolData, MumbleMessageType type, ProtobufCMessage *payload) {
   MumbleMessage *message = mumble_message_new(type, payload);
   
   guint8 *buffer = g_malloc(64 * 1024);
