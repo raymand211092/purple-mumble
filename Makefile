@@ -1,5 +1,5 @@
 CC       = gcc
-CFLAGS  := $(shell pkg-config --cflags purple-3 libprotobuf-c) -fPIC -Wno-discarded-qualifiers
+CFLAGS  := $(shell pkg-config --cflags purple-3 libprotobuf-c) -fPIC -Wno-discarded-qualifiers -g
 LDFLAGS := $(shell pkg-config --libs purple-3 libprotobuf-c)
 
 OBJECTS = mumble-message.o mumble-protocol.o mumble.pb-c.o plugin.o
