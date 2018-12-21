@@ -32,6 +32,8 @@ typedef struct {
   GInputStream *inputStream;
   guint8 *inputBuffer;
   gint inputBufferIndex;
+  gchar *userName;
+  gchar *server;
   PurpleChatConversation *rootChatConversation;
   GList *users;
 } MumbleProtocolData;
@@ -75,7 +77,12 @@ static void mumble_protocol_init(PurpleProtocol *protocol) {
   
   protocol->id   = "prpl-mumble";
   protocol->name = "Mumble";
+  
   protocol->options = OPT_PROTO_PASSWORD_OPTIONAL;
+  
+  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new("Server", "localhost", '@'));
+  
+  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new("Port", "port", 64738));
 }
 
 static void mumble_protocol_class_init(PurpleProtocolClass *protocolClass) {
@@ -108,6 +115,11 @@ static void mumble_protocol_login(PurpleAccount *account) {
   MumbleProtocolData *protocolData = g_new0(MumbleProtocolData, 1);
   purple_connection_set_protocol_data(connection, protocolData);
   
+  gchar **parts = g_strsplit(purple_account_get_username(account), "@", 2);
+  protocolData->userName = g_strdup(parts[0]);
+  protocolData->server = g_strdup(parts[1]);
+  g_strfreev(parts);
+  
   GError *error;
   GSocketClient *client = purple_gio_socket_client_new(account, &error);
   if (!client) {
@@ -117,13 +129,19 @@ static void mumble_protocol_login(PurpleAccount *account) {
   g_socket_client_set_tls(client, TRUE);
   g_socket_client_set_tls_validation_flags(client, 0);
   
-  g_socket_client_connect_to_host_async(client, "127.0.0.1:64738", 64738, NULL, on_connected, connection);
+  g_socket_client_connect_to_host_async(client, protocolData->server, purple_account_get_int(account, "port", 64738), NULL, on_connected, connection);
   
   g_object_unref(client);
 }
 
 static void mumble_protocol_close(PurpleConnection *connection) {
   fprintf(stderr, "mumble_protocol_close()\n");
+  
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
+  
+  g_free(protocolData->userName);
+  g_free(protocolData->server);
+  g_free(protocolData);
 }
 
 static GList *mumble_protocol_status_types(PurpleAccount *account) {
@@ -163,15 +181,17 @@ static void mumble_protocol_chat_iface_leave(PurpleConnection *connection, int f
 static int mumble_protocol_chat_iface_send(PurpleConnection *connection, int id, PurpleMessage *message) {
   fprintf(stderr, "mumble_protocol_chat_iface_send()\n");
   
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
+  
   MumbleProto__TextMessage textMessage = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
   int ids[1] = { 0 };
   textMessage.has_actor = 0;
   textMessage.n_channel_id = 1;
   textMessage.channel_id = ids;
   textMessage.message = purple_message_get_contents(message);
-  write_mumble_message(purple_connection_get_protocol_data(connection), MUMBLE_TEXT_MESSAGE, (ProtobufCMessage *) &textMessage);
+  write_mumble_message(protocolData, MUMBLE_TEXT_MESSAGE, (ProtobufCMessage *) &textMessage);
   
-  purple_serv_got_chat_in(connection, 0, "username", purple_message_get_flags(message), purple_message_get_contents(message), time(NULL));
+  purple_serv_got_chat_in(connection, 0, protocolData->userName, purple_message_get_flags(message), purple_message_get_contents(message), time(NULL));
   
   return 0;
 }
@@ -216,7 +236,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   write_mumble_message(protocolData, MUMBLE_VERSION, (ProtobufCMessage *) &versionMessage);
   
   MumbleProto__Authenticate authenticateMessage = MUMBLE_PROTO__AUTHENTICATE__INIT;
-  authenticateMessage.username = "username";
+  authenticateMessage.username = protocolData->userName;
   write_mumble_message(protocolData, MUMBLE_AUTHENTICATE, (ProtobufCMessage *) &authenticateMessage);
   
   MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
@@ -227,7 +247,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   purple_connection_set_state(purpleConnection, PURPLE_CONNECTION_CONNECTED);
   
   protocolData->rootChatConversation = purple_serv_got_joined_chat(purpleConnection, 0, "root");
-  purple_chat_conversation_add_user(protocolData->rootChatConversation, "username", NULL, 0, FALSE);
+  purple_chat_conversation_add_user(protocolData->rootChatConversation, protocolData->userName, NULL, 0, FALSE);
 }
 
 static void read_asynchronously(PurpleConnection *connection, gint count) {
