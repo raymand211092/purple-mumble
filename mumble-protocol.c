@@ -28,6 +28,7 @@ typedef struct {
 } MumbleUser;
 
 typedef struct {
+  GSocketConnection *connection;
   PurpleQueuedOutputStream *outputStream;
   GInputStream *inputStream;
   guint8 *inputBuffer;
@@ -36,6 +37,7 @@ typedef struct {
   gchar *server;
   PurpleChatConversation *rootChatConversation;
   GHashTable *idToUser;
+  guint keepalive;
 } MumbleProtocolData;
 
 static void mumble_protocol_init(PurpleProtocol *);
@@ -132,6 +134,8 @@ static void mumble_protocol_login(PurpleAccount *account) {
   g_socket_client_connect_to_host_async(client, protocolData->server, purple_account_get_int(account, "port", 64738), NULL, on_connected, connection);
   
   g_object_unref(client);
+  
+  purple_connection_set_state(connection, PURPLE_CONNECTION_CONNECTING);
 }
 
 static void mumble_protocol_close(PurpleConnection *connection) {
@@ -140,9 +144,18 @@ static void mumble_protocol_close(PurpleConnection *connection) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  purple_account_set_status(purple_connection_get_account(connection), "offline", TRUE, NULL);
+  
+  g_source_remove(protocolData->keepalive);
+  purple_gio_graceful_close(G_IO_STREAM(protocolData->connection), G_INPUT_STREAM(protocolData->inputStream), G_OUTPUT_STREAM(protocolData->outputStream));
+  
+  g_clear_object(&protocolData->inputStream);
+  g_clear_object(&protocolData->outputStream);
+  g_clear_object(&protocolData->connection);
   
   g_hash_table_destroy(protocolData->idToUser);
   
+  g_free(protocolData->inputBuffer);
   g_free(protocolData->userName);
   g_free(protocolData->server);
   g_free(protocolData);
@@ -151,7 +164,8 @@ static void mumble_protocol_close(PurpleConnection *connection) {
 static GList *mumble_protocol_status_types(PurpleAccount *account) {
   fprintf(stderr, "mumble_protocol_status_types()\n");
   GList *types = NULL;
-  types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AVAILABLE, NULL, NULL, FALSE));
+  types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_OFFLINE, NULL, NULL, TRUE));
+  types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AVAILABLE, NULL, NULL, TRUE));
   return types;
 }
 
@@ -166,12 +180,29 @@ static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversati
 
 static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
   fprintf(stderr, "mumble_protocol_chat_iface_info()\n");
-  return NULL;
+  
+  GList *info = NULL;
+  PurpleProtocolChatEntry *entry;
+  
+  entry = g_new0(PurpleProtocolChatEntry, 1);
+  entry->label = "Channel:";
+  entry->identifier = "channel";
+  entry->required = TRUE;
+  info = g_list_append(info, entry);
+  
+  return info;
 }
 
 static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *connection, const char *chatName) {
   fprintf(stderr, "mumble_protocol_chat_iface_info_defaults()\n");
-  return NULL;
+
+  GHashTable *defaults = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
+  
+  if (chatName) {
+    g_hash_table_insert(defaults, "channel", g_strdup(chatName));
+  }
+  
+  return defaults;
 }
 
 static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashTable *components) {
@@ -224,7 +255,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(purpleConnection);
   
   GError *error = NULL;
-  GSocketConnection *socketConnection = g_socket_client_connect_to_host_finish(G_SOCKET_CLIENT(source), result, &error);
+  protocolData->connection = g_socket_client_connect_to_host_finish(G_SOCKET_CLIENT(source), result, &error);
   if (error) {
     purple_connection_take_error(purpleConnection, error);
     return;
@@ -232,10 +263,10 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   
   protocolData->idToUser = g_hash_table_new(g_int_hash, g_int_equal);
   
-  protocolData->outputStream = purple_queued_output_stream_new(g_io_stream_get_output_stream(G_IO_STREAM(socketConnection)));
+  protocolData->outputStream = purple_queued_output_stream_new(g_io_stream_get_output_stream(G_IO_STREAM(protocolData->connection)));
   
-  protocolData->inputStream = g_io_stream_get_input_stream(G_IO_STREAM(socketConnection));
-  protocolData->inputBuffer = g_malloc(64 * 1024);
+  protocolData->inputStream = g_io_stream_get_input_stream(G_IO_STREAM(protocolData->connection));
+  protocolData->inputBuffer = g_malloc(256 * 1024);
   protocolData->inputBufferIndex = 0;
   
   read_asynchronously(purpleConnection, 6);
@@ -255,7 +286,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
   write_mumble_message(protocolData, MUMBLE_PING, (ProtobufCMessage *) &pingMessage);
   
-  g_timeout_add_seconds(10, on_keepalive, purpleConnection);
+  protocolData->keepalive = g_timeout_add_seconds(10, on_keepalive, purpleConnection);
   
   purple_connection_set_state(purpleConnection, PURPLE_CONNECTION_CONNECTED);
   
