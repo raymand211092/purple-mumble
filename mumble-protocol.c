@@ -35,7 +35,7 @@ typedef struct {
   gchar *userName;
   gchar *server;
   PurpleChatConversation *rootChatConversation;
-  GList *users;
+  GHashTable *idToUser;
 } MumbleProtocolData;
 
 static void mumble_protocol_init(PurpleProtocol *);
@@ -139,6 +139,10 @@ static void mumble_protocol_close(PurpleConnection *connection) {
   
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
+  purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  
+  g_hash_table_destroy(protocolData->idToUser);
+  
   g_free(protocolData->userName);
   g_free(protocolData->server);
   g_free(protocolData);
@@ -172,10 +176,17 @@ static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *co
 
 static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashTable *components) {
   fprintf(stderr, "mumble_protocol_chat_iface_join()\n");
+  
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
+  
+  protocolData->rootChatConversation = purple_serv_got_joined_chat(connection, 0, "root");
+  purple_chat_conversation_add_user(protocolData->rootChatConversation, protocolData->userName, NULL, 0, FALSE);
 }
 
-static void mumble_protocol_chat_iface_leave(PurpleConnection *connection, int fd) {
+static void mumble_protocol_chat_iface_leave(PurpleConnection *connection, int id) {
   fprintf(stderr, "mumble_protocol_chat_iface_leave()\n");
+  
+  purple_serv_got_chat_left(connection, id);
 }
 
 static int mumble_protocol_chat_iface_send(PurpleConnection *connection, int id, PurpleMessage *message) {
@@ -218,6 +229,8 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
     purple_connection_take_error(purpleConnection, error);
     return;
   }
+  
+  protocolData->idToUser = g_hash_table_new(g_int_hash, g_int_equal);
   
   protocolData->outputStream = purple_queued_output_stream_new(g_io_stream_get_output_stream(G_IO_STREAM(socketConnection)));
   
@@ -308,19 +321,34 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
         break;
       }
       case MUMBLE_USER_REMOVE: {
+        MumbleProto__UserRemove *userRemove = (MumbleProto__UserRemove *) message->payload;
+        
+        MumbleUser *user = g_hash_table_lookup(protocolData->idToUser, &userRemove->session);
+        if (user) {
+          purple_chat_conversation_remove_user(protocolData->rootChatConversation, user->name, NULL);
+          
+          g_hash_table_remove(protocolData->idToUser, &user->sessionId);
+          g_free(user->name);
+          g_free(user);
+        }
         break;
       }
       case MUMBLE_USER_STATE: {
         MumbleProto__UserState *userState = (MumbleProto__UserState *) message->payload;
         fprintf(stderr, "MUMBLE_USER_STATE: %s\n", userState->name);
         
-        MumbleUser *user = g_new(MumbleUser, 1);
-        user->sessionId = userState->session;
-        user->name = g_strdup(userState->name);
-        protocolData->users = g_list_append(protocolData->users, user);
-        
-        if (!purple_chat_conversation_find_user(protocolData->rootChatConversation, userState->name)) {
-          purple_chat_conversation_add_user(protocolData->rootChatConversation, userState->name, NULL, 0, FALSE);
+        guint32 userId = userState->session;
+
+        if (!g_hash_table_contains(protocolData->idToUser, &userId)) {
+          MumbleUser *user = g_new(MumbleUser, 1);
+          user->sessionId = userId;
+          user->name = g_strdup(userState->name);
+
+          g_hash_table_insert(protocolData->idToUser, &user->sessionId, user);
+
+          if (!purple_chat_conversation_find_user(protocolData->rootChatConversation, userState->name)) {
+            purple_chat_conversation_add_user(protocolData->rootChatConversation, userState->name, NULL, 0, FALSE);
+          }
         }
         break;
       }
@@ -331,14 +359,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
         MumbleProto__TextMessage *textMessage = (MumbleProto__TextMessage *) message->payload;
         fprintf(stderr, "MUMBLE_TEXT_MESSAGE: %d: %s\n", textMessage->has_actor ? textMessage->actor : -1, textMessage->message);
         
-        MumbleUser *sender;
-        for (GList *node = protocolData->users; node != NULL; node = node->next) {
-          MumbleUser *user = node->data;
-          if (textMessage->actor == user->sessionId) {
-            sender = user;
-            break;
-          }
-        }
+        MumbleUser *sender = g_hash_table_lookup(protocolData->idToUser, &textMessage->actor);
         
         purple_serv_got_chat_in(connection, 0, sender->name, 0, textMessage->message, time(NULL));
         break;
