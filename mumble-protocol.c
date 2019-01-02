@@ -31,6 +31,7 @@ typedef struct {
   GSocketConnection *connection;
   PurpleQueuedOutputStream *outputStream;
   GInputStream *inputStream;
+  GCancellable *cancellable;
   guint8 *inputBuffer;
   gint inputBufferIndex;
   gchar *userName;
@@ -145,6 +146,9 @@ static void mumble_protocol_close(PurpleConnection *connection) {
   
   purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
   purple_account_set_status(purple_connection_get_account(connection), "offline", TRUE, NULL);
+  
+  g_cancellable_cancel(protocolData->cancellable);
+  g_clear_object(&protocolData->cancellable);
   
   g_source_remove(protocolData->keepalive);
   purple_gio_graceful_close(G_IO_STREAM(protocolData->connection), G_INPUT_STREAM(protocolData->inputStream), G_OUTPUT_STREAM(protocolData->outputStream));
@@ -269,6 +273,8 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   protocolData->inputBuffer = g_malloc(256 * 1024);
   protocolData->inputBufferIndex = 0;
   
+  protocolData->cancellable = g_cancellable_new();
+  
   read_asynchronously(purpleConnection, 6);
   
   MumbleProto__Version versionMessage = MUMBLE_PROTO__VERSION__INIT;
@@ -296,7 +302,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
 
 static void read_asynchronously(PurpleConnection *connection, gint count) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
-  g_input_stream_read_async(protocolData->inputStream, protocolData->inputBuffer + protocolData->inputBufferIndex, count, G_PRIORITY_DEFAULT, NULL, on_read, connection);
+  g_input_stream_read_async(protocolData->inputStream, protocolData->inputBuffer + protocolData->inputBufferIndex, count, G_PRIORITY_DEFAULT, protocolData->cancellable, on_read, connection);
 }
 
 static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
@@ -304,9 +310,12 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   GError *error = NULL;
-  gssize count = g_input_stream_read_finish(protocolData->inputStream, result, &error);
+  gssize count = g_input_stream_read_finish(G_INPUT_STREAM(source), result, &error);
   if (error) {
     purple_connection_take_error(connection, error);
+    return;
+  } else if (count <= 0) {
+    purple_connection_take_error(connection, g_error_new_literal(PURPLE_CONNECTION_ERROR, PURPLE_CONNECTION_ERROR_NETWORK_ERROR, "Server closed the connection"));
     return;
   }
   
@@ -456,7 +465,7 @@ static void write_mumble_message(MumbleProtocolData *protocolData, MumbleMessage
   guint8 *buffer = g_malloc(64 * 1024);
   gint count = mumble_message_write(message, buffer);
   GBytes *bytes = g_bytes_new_take(buffer, count);
-  purple_queued_output_stream_push_bytes_async(protocolData->outputStream, bytes, G_PRIORITY_DEFAULT, NULL, on_mumble_message_written, bytes);
+  purple_queued_output_stream_push_bytes_async(protocolData->outputStream, bytes, G_PRIORITY_DEFAULT, protocolData->cancellable, on_mumble_message_written, bytes);
   
   mumble_message_free(message);
 }
