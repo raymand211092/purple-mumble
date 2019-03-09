@@ -38,6 +38,7 @@ static PurplePluginInfo *plugin_query(GError **error) {
     "summary",     "Mumble protocol plugin",
     "description", "Mumble protocol plugin that supports only text.",
     "license-id",  "GPL",
+    "flags",       PURPLE_PLUGIN_INFO_FLAGS_AUTO_LOAD,
     NULL
   );
 }
