@@ -45,8 +45,6 @@ static PurplePluginInfo *plugin_query(GError **error) {
 }
 
 static gboolean plugin_load(PurplePlugin *plugin, GError **error) {
-  fprintf(stderr, "plugin_load()\n");
-  
   mumble_protocol_register_type(plugin);
   
   purpleProtocol = purple_protocols_add(MUMBLE_TYPE_PROTOCOL, error);
