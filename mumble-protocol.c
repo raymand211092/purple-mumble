@@ -139,7 +139,9 @@ static void mumble_protocol_login(PurpleAccount *account) {
 static void mumble_protocol_close(PurpleConnection *connection) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
-  purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  if (protocolData->rootChatConversation) {
+    purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  }
   purple_account_set_status(purple_connection_get_account(connection), "offline", TRUE, NULL);
   
   g_cancellable_cancel(protocolData->cancellable);
