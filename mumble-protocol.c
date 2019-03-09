@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <glib/gi18n.h>
 #include <purple-gio.h>
 #include <queuedoutputstream.h>
 #include "mumble-protocol.h"
@@ -76,16 +77,14 @@ static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, Protob
 static void on_mumble_message_written(GObject *, GAsyncResult *, gpointer);
 
 static void mumble_protocol_init(PurpleProtocol *protocol) {
-  fprintf(stderr, "mumble_protocol_init()\n");
-  
   protocol->id   = "prpl-mumble";
   protocol->name = "Mumble";
   
   protocol->options = OPT_PROTO_PASSWORD_OPTIONAL;
   
-  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new("Server", "localhost", '@'));
+  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new(_("Server"), "localhost", '@'));
   
-  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new("Port", "port", 64738));
+  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new(_("Port"), "port", 64738));
 }
 
 static void mumble_protocol_class_init(PurpleProtocolClass *protocolClass) {
@@ -111,8 +110,6 @@ static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *iface) {
 }
 
 static void mumble_protocol_login(PurpleAccount *account) {
-  fprintf(stderr, "mumble_protocol_login()\n");
-  
   PurpleConnection *connection = purple_account_get_connection(account);
   
   MumbleProtocolData *protocolData = g_new0(MumbleProtocolData, 1);
@@ -140,11 +137,11 @@ static void mumble_protocol_login(PurpleAccount *account) {
 }
 
 static void mumble_protocol_close(PurpleConnection *connection) {
-  fprintf(stderr, "mumble_protocol_close()\n");
-  
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
-  purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  if (protocolData->rootChatConversation) {
+    purple_serv_got_chat_left(connection, purple_chat_conversation_get_id(protocolData->rootChatConversation));
+  }
   purple_account_set_status(purple_connection_get_account(connection), "offline", TRUE, NULL);
   
   g_cancellable_cancel(protocolData->cancellable);
@@ -166,7 +163,6 @@ static void mumble_protocol_close(PurpleConnection *connection) {
 }
 
 static GList *mumble_protocol_status_types(PurpleAccount *account) {
-  fprintf(stderr, "mumble_protocol_status_types()\n");
   GList *types = NULL;
   types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_OFFLINE, NULL, NULL, TRUE));
   types = g_list_append(types, purple_status_type_new(PURPLE_STATUS_AVAILABLE, NULL, NULL, TRUE));
@@ -174,7 +170,6 @@ static GList *mumble_protocol_status_types(PurpleAccount *account) {
 }
 
 static const char *mumble_protocol_list_icon(PurpleAccount *account, PurpleBuddy *buddy) {
-  fprintf(stderr, "mumble_protocol_list_icon()\n");
   return "mumble";
 }
 
@@ -183,8 +178,6 @@ static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversati
 }
 
 static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
-  fprintf(stderr, "mumble_protocol_chat_iface_info()\n");
-  
   GList *info = NULL;
   PurpleProtocolChatEntry *entry;
   
@@ -198,8 +191,6 @@ static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
 }
 
 static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *connection, const char *chatName) {
-  fprintf(stderr, "mumble_protocol_chat_iface_info_defaults()\n");
-
   GHashTable *defaults = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
   
   if (chatName) {
@@ -210,8 +201,6 @@ static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *co
 }
 
 static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashTable *components) {
-  fprintf(stderr, "mumble_protocol_chat_iface_join()\n");
-  
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   protocolData->rootChatConversation = purple_serv_got_joined_chat(connection, 0, "root");
@@ -219,14 +208,10 @@ static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashT
 }
 
 static void mumble_protocol_chat_iface_leave(PurpleConnection *connection, int id) {
-  fprintf(stderr, "mumble_protocol_chat_iface_leave()\n");
-  
   purple_serv_got_chat_left(connection, id);
 }
 
 static int mumble_protocol_chat_iface_send(PurpleConnection *connection, int id, PurpleMessage *message) {
-  fprintf(stderr, "mumble_protocol_chat_iface_send()\n");
-  
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
   
   MumbleProto__TextMessage textMessage = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
@@ -253,8 +238,6 @@ static gboolean on_keepalive(gpointer data) {
 }
 
 static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
-  fprintf(stderr, "on_connected()\n");
-
   PurpleConnection *purpleConnection = data;
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(purpleConnection);
   
@@ -315,7 +298,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
     purple_connection_take_error(connection, error);
     return;
   } else if (count <= 0) {
-    purple_connection_take_error(connection, g_error_new_literal(PURPLE_CONNECTION_ERROR, PURPLE_CONNECTION_ERROR_NETWORK_ERROR, "Server closed the connection"));
+    purple_connection_take_error(connection, g_error_new_literal(PURPLE_CONNECTION_ERROR, PURPLE_CONNECTION_ERROR_NETWORK_ERROR, _("Server closed the connection")));
     return;
   }
   
@@ -325,12 +308,12 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   int nextCount;
   
   if (message) {
-    fprintf(stderr, "on_read(): %d\n", message->type);
+    purple_debug_info("mumble", "Read message of type %d", message->type);
     
     switch (message->type) {
       case MUMBLE_VERSION: {
         MumbleProto__Version *version = (MumbleProto__Version *) message->payload;
-        fprintf(stderr, "MUMBLE_VERSION: %s %s %s\n", version->release, version->os, version->os_version);
+        purple_debug_info("mumble", "MUMBLE_VERSION: %s %s %s", version->release, version->os, version->os_version);
         break;
       }
       case MUMBLE_UDP_TUNNEL: {
@@ -341,7 +324,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
       case MUMBLE_PING: {
         MumbleProto__Ping *ping = (MumbleProto__Ping *) message->payload;
-        fprintf(stderr, "MUMBLE_PING\n");
+        purple_debug_info("mumble", "MUMBLE_PING");
         break;
       }
       case MUMBLE_REJECT: {
@@ -349,7 +332,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
       case MUMBLE_SERVER_SYNC: {
         MumbleProto__ServerSync *serverSync = (MumbleProto__ServerSync *) message->payload;
-        fprintf(stderr, "MUMBLE_SERVER_SYNC: %s\n", serverSync->welcome_text);
+        purple_debug_info("mumble", "MUMBLE_SERVER_SYNC: %s", serverSync->welcome_text);
         break;
       }
       case MUMBLE_CHANNEL_REMOVE: {
@@ -357,7 +340,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
       case MUMBLE_CHANNEL_STATE: {
         MumbleProto__ChannelState *channelState = (MumbleProto__ChannelState *) message->payload;
-        fprintf(stderr, "MUMBLE_CHANNEL_STATE: %s\n", channelState->name);
+        purple_debug_info("mumble", "MUMBLE_CHANNEL_STATE: %s", channelState->name);
         break;
       }
       case MUMBLE_USER_REMOVE: {
@@ -375,7 +358,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
       case MUMBLE_USER_STATE: {
         MumbleProto__UserState *userState = (MumbleProto__UserState *) message->payload;
-        fprintf(stderr, "MUMBLE_USER_STATE: %s\n", userState->name);
+        purple_debug_info("mumble", "MUMBLE_USER_STATE: %s", userState->name);
         
         guint32 userId = userState->session;
 
@@ -397,7 +380,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
       case MUMBLE_TEXT_MESSAGE: {
         MumbleProto__TextMessage *textMessage = (MumbleProto__TextMessage *) message->payload;
-        fprintf(stderr, "MUMBLE_TEXT_MESSAGE: %d: %s\n", textMessage->has_actor ? textMessage->actor : -1, textMessage->message);
+        purple_debug_info("mumble", "MUMBLE_TEXT_MESSAGE: %d", textMessage->has_actor ? textMessage->actor : -1, textMessage->message);
         
         MumbleUser *sender = g_hash_table_lookup(protocolData->idToUser, &textMessage->actor);
         

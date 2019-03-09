@@ -18,6 +18,7 @@
  */
 
 #include <purple.h>
+#include <glib/gi18n.h>
 #include "mumble-protocol.h"
 
 static PurplePluginInfo *plugin_query(GError **);
@@ -34,17 +35,16 @@ static PurplePluginInfo *plugin_query(GError **error) {
     "abi-version", PURPLE_ABI_VERSION,
     "name",        "Mumble protocol",
     "version",     "0.0.1",
-    "category",    "Protocol",
-    "summary",     "Mumble protocol plugin",
-    "description", "Mumble protocol plugin that supports only text.",
+    "category",    N_("Protocol"),
+    "summary",     N_("Mumble protocol plugin"),
+    "description", N_("Mumble protocol plugin that supports only text."),
     "license-id",  "GPL",
+    "flags",       PURPLE_PLUGIN_INFO_FLAGS_AUTO_LOAD,
     NULL
   );
 }
 
 static gboolean plugin_load(PurplePlugin *plugin, GError **error) {
-  fprintf(stderr, "plugin_load()\n");
-  
   mumble_protocol_register_type(plugin);
   
   purpleProtocol = purple_protocols_add(MUMBLE_TYPE_PROTOCOL, error);
