@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <glib/gi18n.h>
 #include <purple-gio.h>
 #include <queuedoutputstream.h>
 #include "mumble-protocol.h"
@@ -83,9 +84,9 @@ static void mumble_protocol_init(PurpleProtocol *protocol) {
   
   protocol->options = OPT_PROTO_PASSWORD_OPTIONAL;
   
-  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new("Server", "localhost", '@'));
+  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new(_("Server"), "localhost", '@'));
   
-  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new("Port", "port", 64738));
+  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new(_("Port"), "port", 64738));
 }
 
 static void mumble_protocol_class_init(PurpleProtocolClass *protocolClass) {
@@ -315,7 +316,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
     purple_connection_take_error(connection, error);
     return;
   } else if (count <= 0) {
-    purple_connection_take_error(connection, g_error_new_literal(PURPLE_CONNECTION_ERROR, PURPLE_CONNECTION_ERROR_NETWORK_ERROR, "Server closed the connection"));
+    purple_connection_take_error(connection, g_error_new_literal(PURPLE_CONNECTION_ERROR, PURPLE_CONNECTION_ERROR_NETWORK_ERROR, _("Server closed the connection")));
     return;
   }
   
