@@ -23,5 +23,6 @@
 #include <glib.h>
 
 GList *g_list_append_times(GList *list, gpointer data, gint count);
+gboolean g_node_traverse_func_create_list(GNode *node, gpointer data);
 
 #endif

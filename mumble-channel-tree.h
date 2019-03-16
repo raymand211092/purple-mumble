@@ -30,6 +30,8 @@ typedef struct _MumbleChannelTree {
   GNode *root;
 } MumbleChannelTree;
 
+guint mumble_channel_tree_get_parent_id(MumbleChannelTree *tree, guint channelId);
+GList *mumble_channel_tree_get_channels_in_topological_order(MumbleChannelTree *tree);
 void mumble_channel_tree_set_user_channel_id(MumbleChannelTree *tree, guint sessionId, guint channelId);
 guint mumble_channel_tree_get_user_channel_id(MumbleChannelTree *tree, guint sessionId);
 MumbleChannel *mumble_channel_tree_get_channel_by_name(MumbleChannelTree *tree, gchar *name);

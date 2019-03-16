@@ -23,6 +23,23 @@
 
 static GNode *mumble_channel_tree_get_node(MumbleChannelTree *tree, guint channelId);
 
+guint mumble_channel_tree_get_parent_id(MumbleChannelTree *tree, guint channelId) {
+  GNode *node = mumble_channel_tree_get_node(tree, channelId);
+
+  guint parentId = -1;
+  if (node->parent) {
+    parentId = ((MumbleChannel *) node->parent->data)->id;
+  }
+
+  return parentId;
+}
+
+GList *mumble_channel_tree_get_channels_in_topological_order(MumbleChannelTree *tree) {
+  GList *channels = NULL;
+  g_node_traverse(tree->root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, g_node_traverse_func_create_list, &channels);
+  return channels;
+}
+
 void mumble_channel_tree_set_user_channel_id(MumbleChannelTree *tree, guint sessionId, guint channelId) {
   mumble_channel_tree_get_user(tree, sessionId)->channelId = channelId;
 }

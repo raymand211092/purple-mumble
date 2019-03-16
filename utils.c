@@ -25,3 +25,11 @@ GList *g_list_append_times(GList *list, gpointer data, gint count) {
   }
   return list;
 }
+
+gboolean g_node_traverse_func_create_list(GNode *node, gpointer data) {
+  GList *nodes = *((GList **) data);
+  nodes = g_list_append(nodes, node->data);
+  *((GList **) data) = nodes;
+
+  return FALSE;
+}

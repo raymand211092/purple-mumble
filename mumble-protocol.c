@@ -46,6 +46,7 @@ static void mumble_protocol_class_init(PurpleProtocolClass *);
 static void mumble_protocol_client_iface_init(PurpleProtocolClientIface *);
 static void mumble_protocol_server_iface_init(PurpleProtocolServerIface *);
 static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *);
+static void mumble_protocol_roomlist_iface_init(PurpleProtocolRoomlistIface *);
 
 static void mumble_protocol_login(PurpleAccount *);
 static void mumble_protocol_close(PurpleConnection *);
@@ -60,10 +61,13 @@ static void mumble_protocol_chat_iface_join(PurpleConnection *, GHashTable *);
 static void mumble_protocol_chat_iface_leave(PurpleConnection *, int);
 static int mumble_protocol_chat_iface_send(PurpleConnection *, int, PurpleMessage *);
 
+static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection *);
+
 PURPLE_DEFINE_TYPE_EXTENDED(MumbleProtocol, mumble_protocol, PURPLE_TYPE_PROTOCOL, 0,
   PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_CLIENT_IFACE, mumble_protocol_client_iface_init)
   PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_SERVER_IFACE, mumble_protocol_server_iface_init)
-  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_CHAT_IFACE, mumble_protocol_chat_iface_init));
+  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_CHAT_IFACE, mumble_protocol_chat_iface_init)
+  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_ROOMLIST_IFACE, mumble_protocol_roomlist_iface_init));
 
 G_MODULE_EXPORT GType mumble_protocol_get_type(void);
 
@@ -105,6 +109,10 @@ static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *iface) {
   iface->join          = mumble_protocol_chat_iface_join;
   iface->leave         = mumble_protocol_chat_iface_leave;
   iface->send          = mumble_protocol_chat_iface_send;
+}
+
+static void mumble_protocol_roomlist_iface_init(PurpleProtocolRoomlistIface *iface) {
+  iface->get_list = mumble_protocol_roomlist_iface_get_list;
 }
 
 static void mumble_protocol_login(PurpleAccount *account) {
@@ -252,6 +260,46 @@ static int mumble_protocol_chat_iface_send(PurpleConnection *connection, int id,
   purple_serv_got_chat_in(connection, 0, protocolData->userName, purple_message_get_flags(message), purple_message_get_contents(message), time(NULL));
 
   return 0;
+}
+
+static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection *connection) {
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
+
+  PurpleRoomlist *roomlist = purple_roomlist_new(purple_connection_get_account(connection));
+
+  GList *fields = NULL;
+  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "", "channel", TRUE));
+  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, _("Description"), "description", FALSE));
+
+  purple_roomlist_set_fields(roomlist, fields);
+
+  /*
+   * Mumble has a hierarchy of channels, so link the rooms to a tree structure.
+   */
+  GHashTable *channelIdToRoom = g_hash_table_new(g_int_hash, g_int_equal);
+  GList *channels = mumble_channel_tree_get_channels_in_topological_order(protocolData->tree);
+
+  for (GList *node = channels; node; node = node->next) {
+    MumbleChannel *channel = node->data;
+    guint parentId = mumble_channel_tree_get_parent_id(protocolData->tree, channel->id);
+
+    PurpleRoomlistRoom *parentRoom = g_hash_table_lookup(channelIdToRoom, &parentId);
+
+    PurpleRoomlistRoom *room = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_ROOM, channel->name, parentRoom);
+    purple_roomlist_room_add_field(roomlist, room, channel->name);
+    purple_roomlist_room_add_field(roomlist, room, channel->description);
+
+    purple_roomlist_room_add(roomlist, room);
+
+    g_hash_table_insert(channelIdToRoom, &channel->id, room);
+
+    purple_debug_info("mumble", "Adding channel '%s' to roomlist", channel->name);
+  }
+
+  g_hash_table_destroy(channelIdToRoom);
+  g_list_free(channels);
+
+  return roomlist;
 }
 
 static gboolean on_keepalive(gpointer data) {
