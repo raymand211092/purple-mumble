@@ -78,6 +78,7 @@ static void on_read(GObject *, GAsyncResult *, gpointer);
 static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, ProtobufCMessage *);
 static void on_mumble_message_written(GObject *, GAsyncResult *, gpointer);
 static void join_channel(PurpleConnection *, MumbleChannel *);
+static GList *append_chat_entry(GList *, gchar *, gchar *, gboolean);
 
 static void mumble_protocol_init(PurpleProtocol *protocol) {
   protocol->id   = "prpl-mumble";
@@ -184,16 +185,12 @@ static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversati
 }
 
 static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
-  GList *info = NULL;
-  PurpleProtocolChatEntry *entry;
-  
-  entry = g_new0(PurpleProtocolChatEntry, 1);
-  entry->label = "Channel:";
-  entry->identifier = "channel";
-  entry->required = TRUE;
-  info = g_list_append(info, entry);
-  
-  return info;
+  GList *entries = NULL;
+
+  entries = append_chat_entry(entries, _("Channel:"), "channel", FALSE);
+  entries = append_chat_entry(entries, _("ID"), "id", FALSE);
+
+  return entries;
 }
 
 static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *connection, const char *chatName) {
@@ -208,9 +205,16 @@ static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *co
 
 static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashTable *components) {
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
-  gchar *channelName = g_hash_table_lookup(components, "channel");
 
-  MumbleChannel *channel = mumble_channel_tree_get_channel_by_name(protocolData->tree, channelName);
+  gchar *channelName = g_hash_table_lookup(components, "channel");
+  gchar *idString    = g_hash_table_lookup(components, "id");
+
+  MumbleChannel *channel;
+  if (idString && strlen(idString)) {
+    channel = mumble_channel_tree_get_channel(protocolData->tree, g_ascii_strtoull(idString, NULL, 10));
+  } else {
+    channel = mumble_channel_tree_get_channel_by_name(protocolData->tree, channelName);
+  }
 
   if (channel) {
     join_channel(connection, channel);
@@ -254,6 +258,7 @@ static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection 
   GList *fields = NULL;
   fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "", "channel", TRUE));
   fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, _("Description"), "description", FALSE));
+  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, _("ID"), "id", FALSE));
 
   purple_roomlist_set_fields(roomlist, fields);
 
@@ -278,6 +283,7 @@ static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection 
 
     purple_roomlist_room_add_field(roomlist, room, channel->name);
     purple_roomlist_room_add_field(roomlist, room, channel->description);
+    purple_roomlist_room_add_field(roomlist, room, GINT_TO_POINTER(channel->id));
 
     purple_roomlist_room_add(roomlist, room);
 
@@ -651,4 +657,15 @@ static void join_channel(PurpleConnection *connection, MumbleChannel *channel) {
     purple_chat_conversation_add_users(protocolData->activeChat, names, NULL, flags, FALSE);
     g_list_free(names);
   }
+}
+
+static GList *append_chat_entry(GList *entries, gchar *label, gchar *identifier, gboolean required) {
+  PurpleProtocolChatEntry *entry;
+
+  entry = g_new0(PurpleProtocolChatEntry, 1);
+  entry->label      = label;
+  entry->identifier = identifier;
+  entry->required   = required;
+
+  return g_list_append(entries, entry);
 }
