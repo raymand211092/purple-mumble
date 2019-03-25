@@ -17,28 +17,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "utils.h"
+#ifndef PLUGIN_H
+#define PLUGIN_H
 
-void g_string_append_with_delimiter(GString *string, gchar *line, gchar *delimiter) {
-  if (string->len) {
-    g_string_append(string, delimiter);
-  }
-  g_string_append(string, line);
+#include <purple.h>
 
-  g_free(line);
-}
+extern gchar *PROTOCOL_ID;
 
-GList *g_list_append_times(GList *list, gpointer data, gint count) {
-  for (; count; count--) {
-    list = g_list_append(list, data);
-  }
-  return list;
-}
-
-gboolean g_node_traverse_func_create_list(GNode *node, gpointer data) {
-  GList *nodes = *((GList **) data);
-  nodes = g_list_append(nodes, node->data);
-  *((GList **) data) = nodes;
-
-  return FALSE;
-}
+#endif

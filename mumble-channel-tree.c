@@ -23,6 +23,10 @@
 
 static GNode *mumble_channel_tree_get_node(MumbleChannelTree *tree, guint channelId);
 
+gboolean mumble_channel_tree_has_children(MumbleChannelTree *tree, guint channelId) {
+  return g_node_n_children(mumble_channel_tree_get_node(tree, channelId));
+}
+
 guint mumble_channel_tree_get_parent_id(MumbleChannelTree *tree, guint channelId) {
   GNode *node = mumble_channel_tree_get_node(tree, channelId);
 

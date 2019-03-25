@@ -22,6 +22,7 @@
 
 #include <glib.h>
 
+void g_string_append_with_delimiter(GString *string, gchar *line, gchar *delimiter);
 GList *g_list_append_times(GList *list, gpointer data, gint count);
 gboolean g_node_traverse_func_create_list(GNode *node, gpointer data);
 
