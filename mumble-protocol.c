@@ -269,7 +269,13 @@ static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection 
 
     PurpleRoomlistRoom *parentRoom = g_hash_table_lookup(channelIdToRoom, &parentId);
 
-    PurpleRoomlistRoom *room = purple_roomlist_room_new(PURPLE_ROOMLIST_ROOMTYPE_ROOM, channel->name, parentRoom);
+    PurpleRoomlistRoomType type = PURPLE_ROOMLIST_ROOMTYPE_ROOM;
+    if (mumble_channel_tree_has_children(protocolData->tree, channel->id)) {
+      type |= PURPLE_ROOMLIST_ROOMTYPE_CATEGORY;
+    }
+
+    PurpleRoomlistRoom *room = purple_roomlist_room_new(type, channel->name, parentRoom);
+
     purple_roomlist_room_add_field(roomlist, room, channel->name);
     purple_roomlist_room_add_field(roomlist, room, channel->description);
 
