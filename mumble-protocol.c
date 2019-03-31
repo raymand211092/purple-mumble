@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018  Petteri Pitkänen
+ * Copyright (C) 2018-2019  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,6 @@ typedef struct {
   PurpleChatConversation *activeChat;
   MumbleChannelTree *tree;
   guint sessionId;
-  guint keepalive;
 } MumbleProtocolData;
 
 static void mumble_protocol_init(PurpleProtocol *);
@@ -57,6 +56,9 @@ static const char *mumble_protocol_list_icon(PurpleAccount *, PurpleBuddy *);
 
 static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversation *);
 
+static void mumble_protocol_server_iface_keepalive(PurpleConnection *connection);
+static int mumble_protocol_server_iface_get_keepalive_interval();
+
 static GList *mumble_protocol_chat_iface_info(PurpleConnection *);
 static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *, const char *);
 static void mumble_protocol_chat_iface_join(PurpleConnection *, GHashTable *);
@@ -73,7 +75,6 @@ PURPLE_DEFINE_TYPE_EXTENDED(MumbleProtocol, mumble_protocol, PURPLE_TYPE_PROTOCO
 
 G_MODULE_EXPORT GType mumble_protocol_get_type(void);
 
-static gboolean on_keepalive(gpointer);
 static void on_connected(GObject *, GAsyncResult *, gpointer);
 static void read_asynchronously(PurpleConnection *, gint);
 static void on_read(GObject *, GAsyncResult *, gpointer);
@@ -109,6 +110,8 @@ static void mumble_protocol_client_iface_init(PurpleProtocolClientIface *iface) 
 }
 
 static void mumble_protocol_server_iface_init(PurpleProtocolServerIface *iface) {
+  iface->keepalive              = mumble_protocol_server_iface_keepalive;
+  iface->get_keepalive_interval = mumble_protocol_server_iface_get_keepalive_interval;
 }
 
 static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *iface) {
@@ -162,7 +165,6 @@ static void mumble_protocol_close(PurpleConnection *connection) {
   g_cancellable_cancel(protocolData->cancellable);
   g_clear_object(&protocolData->cancellable);
 
-  g_source_remove(protocolData->keepalive);
   purple_gio_graceful_close(G_IO_STREAM(protocolData->connection), G_INPUT_STREAM(protocolData->inputStream), G_OUTPUT_STREAM(protocolData->outputStream));
 
   g_clear_object(&protocolData->inputStream);
@@ -192,6 +194,17 @@ static const char *mumble_protocol_list_icon(PurpleAccount *account, PurpleBuddy
 
 static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversation *conversation) {
   return 256;
+}
+
+static void mumble_protocol_server_iface_keepalive(PurpleConnection *connection) {
+  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
+
+  MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
+  write_mumble_message(protocolData, MUMBLE_PING, (ProtobufCMessage *) &pingMessage);
+}
+
+static int mumble_protocol_server_iface_get_keepalive_interval() {
+  return 10;
 }
 
 static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
@@ -308,16 +321,6 @@ static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection 
   return roomlist;
 }
 
-static gboolean on_keepalive(gpointer data) {
-  PurpleConnection *connection = data;
-  MumbleProtocolData *protocolData = purple_connection_get_protocol_data(connection);
-  
-  MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
-  write_mumble_message(protocolData, MUMBLE_PING, (ProtobufCMessage *) &pingMessage);
-  
-  return TRUE;
-}
-
 static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   PurpleConnection *purpleConnection = data;
   MumbleProtocolData *protocolData = purple_connection_get_protocol_data(purpleConnection);
@@ -360,8 +363,6 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
 
   MumbleProto__Ping pingMessage = MUMBLE_PROTO__PING__INIT;
   write_mumble_message(protocolData, MUMBLE_PING, (ProtobufCMessage *) &pingMessage);
-
-  protocolData->keepalive = g_timeout_add_seconds(10, on_keepalive, purpleConnection);
 
   purple_connection_set_state(purpleConnection, PURPLE_CONNECTION_CONNECTED);
 }
