@@ -50,11 +50,11 @@ ProtobufCMessageDescriptor *typeToDescriptor[] = {
 
 G_DEFINE_BOXED_TYPE(MumbleMessage, mumble_message, mumble_message_copy, mumble_message_free)
 
-MumbleMessage *mumble_message_read(guint8 *buffer, gint length) {
+MumbleMessage *mumble_message_read(guint8 *buffer, guint length) {
   MumbleMessage *message = NULL;
   if (length >= 6) {
-    int type = buffer[1];
-    int messageLength = mumble_message_get_minimum_length(buffer, length);
+    guint type = buffer[1];
+    guint messageLength = mumble_message_get_minimum_bytes(buffer, length);
 
     if (length >= messageLength) {
       message = mumble_message_new(type, protobuf_c_message_unpack(typeToDescriptor[type], NULL, messageLength - 6, buffer + 6));
@@ -64,15 +64,15 @@ MumbleMessage *mumble_message_read(guint8 *buffer, gint length) {
   return message;
 }
 
-gint mumble_message_get_minimum_length(guint8 *buffer, gint partialLength) {
-  gint minimumLength;
+guint mumble_message_get_minimum_bytes(guint8 *buffer, guint partialLength) {
+  guint minimumBytes;
   if (partialLength < 6) {
-    minimumLength = 6;
+    minimumBytes = 6;
   } else {
-    gint payloadLength = (buffer[2] << 24) | (buffer[3] << 16) | (buffer[4] << 8) | buffer[5];
-    minimumLength = 6 + payloadLength;
+    guint payloadLength = (buffer[2] << 24) | (buffer[3] << 16) | (buffer[4] << 8) | buffer[5];
+    minimumBytes = 6 + payloadLength;
   }
-  return minimumLength;
+  return minimumBytes;
 }
 
 gint mumble_message_write(MumbleMessage *message, guint8 *buffer) {

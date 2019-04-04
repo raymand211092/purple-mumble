@@ -1,0 +1,61 @@
+/*
+ * purple-mumble -- Mumble protocol plugin for libpurple
+ * Copyright (C) 2018-2019  Petteri Pitkänen
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include <purple.h>
+#include "mumble-output-stream.h"
+
+G_DEFINE_TYPE(MumbleOutputStream, mumble_output_stream, G_TYPE_FILTER_OUTPUT_STREAM)
+
+static void on_written(GObject *source, GAsyncResult *result, gpointer data);
+
+gboolean mumble_output_stream_write_message_finish(MumbleOutputStream *stream, GAsyncResult *result, GError **error) {
+  return g_task_propagate_boolean(G_TASK(result), error);
+}
+
+void mumble_output_stream_write_message_async(MumbleOutputStream *stream, MumbleMessage *message, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer callbackData) {
+  guint8 *buffer = g_malloc(64 * 1024); // TODO Check this properly
+  gint count = mumble_message_write(message, buffer);
+  GBytes *bytes = g_bytes_new_take(buffer, count);
+
+  mumble_message_free(message);
+
+  GTask *task = g_task_new(stream, cancellable, callback, callbackData);
+  g_task_set_task_data(task, bytes, g_bytes_unref);
+
+  purple_queued_output_stream_push_bytes_async(g_filter_output_stream_get_base_stream(stream), bytes, G_PRIORITY_DEFAULT, cancellable, on_written, task);
+}
+
+GOutputStream *mumble_output_stream_new(GOutputStream *baseStream) {
+  // TODO This class should extend PurpleQueuedOutputStream.
+  PurpleQueuedOutputStream *queuedOutputStream = purple_queued_output_stream_new(baseStream);
+
+  return g_object_new(MUMBLE_TYPE_OUTPUT_STREAM, "base-stream", queuedOutputStream, NULL);
+}
+
+static void mumble_output_stream_init(MumbleOutputStream *stream) {
+}
+
+static void mumble_output_stream_class_init(MumbleOutputStreamClass *mumbleOutputStreamClass) {
+}
+
+static void on_written(GObject *source, GAsyncResult *result, gpointer data) {
+  GTask *task = G_TASK(data);
+  g_task_return_boolean(task, TRUE);
+  g_object_unref(task);
+}

@@ -122,7 +122,7 @@ GType mumble_message_get_type(void);
  *
  * Returns: New #MumbleMessage
  */
-MumbleMessage *mumble_message_read(guint8 *buffer, gint length);
+MumbleMessage *mumble_message_read(guint8 *buffer, guint length);
 
 /**
  * mumble_message_get_minimum_length:
@@ -134,7 +134,7 @@ MumbleMessage *mumble_message_read(guint8 *buffer, gint length);
  *
  * Returns: Integer
  */
-gint mumble_message_get_minimum_length(guint8 *buffer, gint length);
+guint mumble_message_get_minimum_bytes(guint8 *buffer, guint length);
 
 /**
  * mumble_message_write:
