@@ -40,6 +40,7 @@ typedef struct _MumbleInputStream {
 
 typedef enum {
   MUMBLE_INPUT_STREAM_ERROR_SERVER_CLOSED_CONNECTION,
+  MUMBLE_INPUT_STREAM_ERROR_MAX_MESSAGE_SIZE_EXCEEDED,
 } MumbleInputStreamError;
 
 MumbleMessage *mumble_input_stream_read_message_finish(MumbleInputStream *stream, GAsyncResult *result, GError **error);

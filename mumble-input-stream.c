@@ -20,6 +20,8 @@
 #include <glib/gi18n.h>
 #include "mumble-input-stream.h"
 
+#define MAX_MESSAGE_SIZE (256 * 1024)
+
 struct _MumbleInputStreamPrivate {
   guint8 *buffer;
   gint offset;
@@ -47,7 +49,7 @@ GInputStream *mumble_input_stream_new(GInputStream *baseStream) {
 static void mumble_input_stream_init(MumbleInputStream *stream) {
   MumbleInputStreamPrivate *priv = mumble_input_stream_get_instance_private(stream);
 
-  priv->buffer = g_malloc(256 * 1024); // TODO Check this properly
+  priv->buffer = g_malloc(MAX_MESSAGE_SIZE);
   priv->offset = 0;
 }
 
@@ -90,8 +92,13 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer userData) {
     g_task_return_pointer(task, message, mumble_message_free);
     g_object_unref(task);
   } else {
-    gint remaining = mumble_message_get_minimum_length(priv->buffer, priv->offset) - priv->offset;
-    start_read(stream, task, remaining);
+    guint length = mumble_message_get_minimum_bytes(priv->buffer, priv->offset);
+    if (length <= MAX_MESSAGE_SIZE) {
+      start_read(stream, task, length - priv->offset);
+    } else {
+      g_task_return_error(task, g_error_new(MUMBLE_INPUT_STREAM_ERROR, MUMBLE_INPUT_STREAM_ERROR_MAX_MESSAGE_SIZE_EXCEEDED, _("Maximum message size exceeded")));
+      g_object_unref(task);
+    }
   }
 }
 
