@@ -18,9 +18,9 @@
  */
 
 #include <glib/gi18n.h>
-#include <purple-gio.h>
-#include <queuedoutputstream.h>
+#include <purple.h>
 #include "mumble-input-stream.h"
+#include "mumble-output-stream.h"
 #include "mumble-protocol.h"
 #include "mumble-message.h"
 #include "mumble-channel-tree.h"
@@ -29,8 +29,8 @@
 
 typedef struct {
   GSocketConnection *connection;
-  PurpleQueuedOutputStream *outputStream;
   MumbleInputStream *inputStream;
+  MumbleOutputStream *outputStream;
   GCancellable *cancellable;
   gchar *userName;
   gchar *server;
@@ -77,7 +77,6 @@ G_MODULE_EXPORT GType mumble_protocol_get_type(void);
 static void on_connected(GObject *, GAsyncResult *, gpointer);
 static void on_read(GObject *, GAsyncResult *, gpointer);
 static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, ProtobufCMessage *);
-static void on_mumble_message_written(GObject *, GAsyncResult *, gpointer);
 static PurpleCmdRet handle_join_cmd(PurpleConversation *, gchar *, gchar **, gchar **, MumbleProtocolData *);
 static PurpleCmdRet handle_channels_cmd(PurpleConversation *, gchar *, gchar **, gchar **, MumbleProtocolData *);
 static void register_cmd(MumbleProtocolData *, gchar *, gchar *, gchar *, PurpleCmdFunc);
@@ -336,7 +335,7 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
   protocolData->tree = mumble_channel_tree_new();
   protocolData->sessionId = -1;
 
-  protocolData->outputStream = purple_queued_output_stream_new(g_io_stream_get_output_stream(G_IO_STREAM(protocolData->connection)));
+  protocolData->outputStream = mumble_output_stream_new(g_io_stream_get_output_stream(G_IO_STREAM(protocolData->connection)));
   protocolData->inputStream  = mumble_input_stream_new(g_io_stream_get_input_stream(G_IO_STREAM(protocolData->connection)));
 
   protocolData->cancellable = g_cancellable_new();
@@ -592,22 +591,6 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   mumble_input_stream_read_message_async(protocolData->inputStream, protocolData->cancellable, on_read, connection);
 }
 
-static void write_mumble_message(MumbleProtocolData *protocolData, MumbleMessageType type, ProtobufCMessage *payload) {
-  MumbleMessage *message = mumble_message_new(type, payload);
-  
-  guint8 *buffer = g_malloc(64 * 1024);
-  gint count = mumble_message_write(message, buffer);
-  GBytes *bytes = g_bytes_new_take(buffer, count);
-  purple_queued_output_stream_push_bytes_async(protocolData->outputStream, bytes, G_PRIORITY_DEFAULT, protocolData->cancellable, on_mumble_message_written, bytes);
-  
-  mumble_message_free(message);
-}
-
-static void on_mumble_message_written(GObject *source, GAsyncResult *result, gpointer data) {
-  GBytes *bytes = data;
-  g_bytes_unref(bytes);
-}
-
 static PurpleCmdRet handle_join_cmd(PurpleConversation *conversation, gchar *cmd, gchar **args, gchar **error, MumbleProtocolData *protocolData) {
   MumbleChannel *channel;
   if (!g_strcmp0(cmd, "join")) {
@@ -708,4 +691,9 @@ static GList *append_chat_entry(GList *entries, gchar *label, gchar *identifier,
   entry->required   = required;
 
   return g_list_append(entries, entry);
+}
+
+static void write_mumble_message(MumbleProtocolData *protocolData, MumbleMessageType type, ProtobufCMessage *payload) {
+  MumbleMessage *message = mumble_message_new(type, payload);
+  mumble_output_stream_write_message_async(protocolData->outputStream, message, protocolData->cancellable, NULL, NULL);
 }
