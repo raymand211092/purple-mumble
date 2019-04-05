@@ -26,8 +26,6 @@
 
 #define MUMBLE_TYPE_OUTPUT_STREAM mumble_output_stream_get_type()
 
-#define MUMBLE_OUTPUT_STREAM_ERROR g_quark_from_static_string("mumble-output-stream-quark")
-
 typedef struct _MumbleOutputStreamClass {
   GFilterOutputStreamClass parent;
 } MumbleOutputStreamClass;
