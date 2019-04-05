@@ -20,7 +20,7 @@
 #include <purple.h>
 #include "mumble-output-stream.h"
 
-G_DEFINE_TYPE(MumbleOutputStream, mumble_output_stream, G_TYPE_FILTER_OUTPUT_STREAM)
+G_DEFINE_TYPE(MumbleOutputStream, mumble_output_stream, PURPLE_TYPE_QUEUED_OUTPUT_STREAM)
 
 static void on_written(GObject *source, GAsyncResult *result, gpointer data);
 
@@ -36,16 +36,13 @@ void mumble_output_stream_write_message_async(MumbleOutputStream *stream, Mumble
   mumble_message_free(message);
 
   GTask *task = g_task_new(stream, cancellable, callback, callbackData);
-  purple_queued_output_stream_push_bytes_async(g_filter_output_stream_get_base_stream(stream), bytes, G_PRIORITY_DEFAULT, cancellable, on_written, task);
+  purple_queued_output_stream_push_bytes_async(stream, bytes, G_PRIORITY_DEFAULT, cancellable, on_written, task);
 
   g_bytes_unref(bytes);
 }
 
 GOutputStream *mumble_output_stream_new(GOutputStream *baseStream) {
-  // TODO This class should extend PurpleQueuedOutputStream.
-  PurpleQueuedOutputStream *queuedOutputStream = purple_queued_output_stream_new(baseStream);
-
-  return g_object_new(MUMBLE_TYPE_OUTPUT_STREAM, "base-stream", queuedOutputStream, NULL);
+  return g_object_new(MUMBLE_TYPE_OUTPUT_STREAM, "base-stream", baseStream, NULL);
 }
 
 static void mumble_output_stream_init(MumbleOutputStream *stream) {
