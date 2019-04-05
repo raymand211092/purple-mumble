@@ -36,9 +36,9 @@ void mumble_output_stream_write_message_async(MumbleOutputStream *stream, Mumble
   mumble_message_free(message);
 
   GTask *task = g_task_new(stream, cancellable, callback, callbackData);
-  g_task_set_task_data(task, bytes, g_bytes_unref);
-
   purple_queued_output_stream_push_bytes_async(g_filter_output_stream_get_base_stream(stream), bytes, G_PRIORITY_DEFAULT, cancellable, on_written, task);
+
+  g_bytes_unref(bytes);
 }
 
 GOutputStream *mumble_output_stream_new(GOutputStream *baseStream) {
