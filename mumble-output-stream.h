@@ -35,8 +35,8 @@ typedef struct _MumbleOutputStream {
 } MumbleOutputStream;
 
 gboolean mumble_output_stream_write_message_finish(MumbleOutputStream *stream, GAsyncResult *result, GError **error);
-void mumble_output_stream_write_message_async(MumbleOutputStream *stream, MumbleMessage *message, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer userData);
-GOutputStream *mumble_output_stream_new(GOutputStream *baseStream);
+void mumble_output_stream_write_message_async(MumbleOutputStream *stream, MumbleMessage *message, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_data);
+GOutputStream *mumble_output_stream_new(GOutputStream *base_stream);
 GType mumble_output_stream_get_type();
 
 #endif
