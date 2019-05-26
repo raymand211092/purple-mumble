@@ -19,7 +19,7 @@
 
 #include "mumble-message.h"
 
-ProtobufCMessageDescriptor *typeToDescriptor[] = {
+ProtobufCMessageDescriptor *type_to_descriptor[] = {
   &mumble_proto__version__descriptor,
   &mumble_proto__udptunnel__descriptor,
   &mumble_proto__authenticate__descriptor,
@@ -54,36 +54,36 @@ MumbleMessage *mumble_message_read(guint8 *buffer, guint length) {
   MumbleMessage *message = NULL;
   if (length >= 6) {
     guint type = buffer[1];
-    guint messageLength = mumble_message_get_minimum_bytes(buffer, length);
+    guint message_length = mumble_message_get_minimum_bytes(buffer, length);
 
-    if (length >= messageLength) {
-      message = mumble_message_new(type, protobuf_c_message_unpack(typeToDescriptor[type], NULL, messageLength - 6, buffer + 6));
+    if (length >= message_length) {
+      message = mumble_message_new(type, protobuf_c_message_unpack(type_to_descriptor[type], NULL, message_length - 6, buffer + 6));
       message->unpacked = TRUE;
     }
   }
   return message;
 }
 
-guint mumble_message_get_minimum_bytes(guint8 *buffer, guint partialLength) {
-  guint minimumBytes;
-  if (partialLength < 6) {
-    minimumBytes = 6;
+guint mumble_message_get_minimum_bytes(guint8 *buffer, guint partial_length) {
+  guint minimum_bytes;
+  if (partial_length < 6) {
+    minimum_bytes = 6;
   } else {
-    guint payloadLength = (buffer[2] << 24) | (buffer[3] << 16) | (buffer[4] << 8) | buffer[5];
-    minimumBytes = 6 + payloadLength;
+    guint payload_length = (buffer[2] << 24) | (buffer[3] << 16) | (buffer[4] << 8) | buffer[5];
+    minimum_bytes = 6 + payload_length;
   }
-  return minimumBytes;
+  return minimum_bytes;
 }
 
 gint mumble_message_write(MumbleMessage *message, guint8 *buffer) {
-  gint packedSize = protobuf_c_message_get_packed_size(message->payload);
+  gint packed_size = protobuf_c_message_get_packed_size(message->payload);
 
   buffer[0] = 0;
   buffer[1] = message->type;
-  buffer[2] = packedSize >> 24;
-  buffer[3] = packedSize >> 16;
-  buffer[4] = packedSize >> 8;
-  buffer[5] = packedSize;
+  buffer[2] = packed_size >> 24;
+  buffer[3] = packed_size >> 16;
+  buffer[4] = packed_size >> 8;
+  buffer[5] = packed_size;
 
   return 6 + protobuf_c_message_pack(message->payload, buffer + 6);
 }
@@ -101,11 +101,11 @@ MumbleMessage *mumble_message_copy(MumbleMessage *message) {
   return copy;
 }
 
-MumbleMessage *mumble_message_new(MumbleMessageType type, ProtobufCMessage *protobufMessage) {
+MumbleMessage *mumble_message_new(MumbleMessageType type, ProtobufCMessage *protobuf_message) {
   MumbleMessage *message = g_new0(MumbleMessage, 1);
 
   message->type = type;
-  message->payload = protobufMessage;
+  message->payload = protobuf_message;
 
   return message;
 }

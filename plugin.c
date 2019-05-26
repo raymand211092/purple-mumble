@@ -25,7 +25,7 @@ static PurplePluginInfo *plugin_query(GError **);
 static gboolean plugin_load(PurplePlugin *, GError **);
 static gboolean plugin_unload(PurplePlugin *, GError **);
 
-static PurpleProtocol *purpleProtocol;
+static PurpleProtocol *purple_protocol;
 
 gchar *PROTOCOL_ID = "prpl-mumble";
 
@@ -49,8 +49,8 @@ static PurplePluginInfo *plugin_query(GError **error) {
 static gboolean plugin_load(PurplePlugin *plugin, GError **error) {
   mumble_protocol_register_type(plugin);
   
-  purpleProtocol = purple_protocols_add(MUMBLE_TYPE_PROTOCOL, error);
-  if (!purpleProtocol) {
+  purple_protocol = purple_protocols_add(MUMBLE_TYPE_PROTOCOL, error);
+  if (!purple_protocol) {
     return FALSE;
   }
   
@@ -58,7 +58,7 @@ static gboolean plugin_load(PurplePlugin *plugin, GError **error) {
 }
 
 static gboolean plugin_unload(PurplePlugin *plugin, GError **error) {
-  if (!purple_protocols_remove(purpleProtocol, error)) {
+  if (!purple_protocols_remove(purple_protocol, error)) {
     return FALSE;
   }
   

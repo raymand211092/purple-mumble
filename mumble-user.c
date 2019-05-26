@@ -30,16 +30,16 @@ void mumble_user_free(MumbleUser *user) {
 }
 
 MumbleUser *mumble_user_copy(MumbleUser *user) {
-  MumbleUser *copy = mumble_user_new(user->sessionId, user->name, user->channelId);
+  MumbleUser *copy = mumble_user_new(user->session_id, user->name, user->channel_id);
   return copy;
 }
 
-MumbleUser *mumble_user_new(guint sessionId, gchar *name, guint channelId) {
+MumbleUser *mumble_user_new(guint session_id, gchar *name, guint channel_id) {
   MumbleUser *user = g_new0(MumbleUser, 1);
 
-  user->sessionId = sessionId;
+  user->session_id = session_id;
   mumble_user_set_name(user, name);
-  user->channelId = channelId;
+  user->channel_id = channel_id;
 
   return user;
 }

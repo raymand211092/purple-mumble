@@ -39,10 +39,10 @@ MumbleChannel *mumble_channel_copy(MumbleChannel *channel) {
   return copy;
 }
 
-MumbleChannel *mumble_channel_new(guint32 channelId, gchar *name, gchar *description) {
+MumbleChannel *mumble_channel_new(guint32 channel_id, gchar *name, gchar *description) {
   MumbleChannel *channel = g_new0(MumbleChannel, 1);
 
-  channel->id = channelId;
+  channel->id = channel_id;
   mumble_channel_set_name(channel, name);
   mumble_channel_set_description(channel, description);
 

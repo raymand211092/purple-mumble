@@ -23,15 +23,15 @@
 #include <glib-object.h>
 
 typedef struct _MumbleUser {
-  guint sessionId;
+  guint session_id;
   gchar *name;
-  guint channelId;
+  guint channel_id;
 } MumbleUser;
 
 void mumble_user_set_name(MumbleUser *user, gchar *name);
 void mumble_user_free(MumbleUser *user);
 MumbleUser *mumble_user_copy(MumbleUser *user);
-MumbleUser *mumble_user_new(guint sessionId, gchar *name, guint channelId);
+MumbleUser *mumble_user_new(guint sessionId, gchar *name, guint channel_id);
 GType mumble_user_get_type();
 
 #endif

@@ -25,24 +25,24 @@
 #include "mumble-user.h"
 
 typedef struct _MumbleChannelTree {
-  GHashTable *idToChannel;
-  GHashTable *idToUser;
+  GHashTable *id_to_channel;
+  GHashTable *id_to_user;
   GNode *root;
 } MumbleChannelTree;
 
-gboolean mumble_channel_tree_has_children(MumbleChannelTree *tree, guint channelId);
-guint mumble_channel_tree_get_parent_id(MumbleChannelTree *tree, guint channelId);
+gboolean mumble_channel_tree_has_children(MumbleChannelTree *tree, guint channel_id);
+guint mumble_channel_tree_get_parent_id(MumbleChannelTree *tree, guint channel_id);
 GList *mumble_channel_tree_get_channels_in_topological_order(MumbleChannelTree *tree);
-void mumble_channel_tree_set_user_channel_id(MumbleChannelTree *tree, guint sessionId, guint channelId);
-guint mumble_channel_tree_get_user_channel_id(MumbleChannelTree *tree, guint sessionId);
+void mumble_channel_tree_set_user_channel_id(MumbleChannelTree *tree, guint session_id, guint channel_id);
+guint mumble_channel_tree_get_user_channel_id(MumbleChannelTree *tree, guint session_id);
 MumbleChannel *mumble_channel_tree_get_channel_by_name(MumbleChannelTree *tree, gchar *name);
-GList *mumble_channel_tree_get_channel_user_names(MumbleChannelTree *tree, guint channelId);
-void mumble_channel_tree_remove_user(MumbleChannelTree *tree, guint sessionId);
+GList *mumble_channel_tree_get_channel_user_names(MumbleChannelTree *tree, guint channel_id);
+void mumble_channel_tree_remove_user(MumbleChannelTree *tree, guint session_id);
 void mumble_channel_tree_add_user(MumbleChannelTree *tree, MumbleUser *user);
-MumbleUser *mumble_channel_tree_get_user(MumbleChannelTree *tree, guint sessionId);
-void mumble_channel_tree_add_channel(MumbleChannelTree *tree, MumbleChannel *channel, guint parentId);
-void mumble_channel_tree_remove_subtree(MumbleChannelTree *tree, guint channelId);
-MumbleChannel *mumble_channel_tree_get_channel(MumbleChannelTree *tree, guint channelId);
+MumbleUser *mumble_channel_tree_get_user(MumbleChannelTree *tree, guint session_id);
+void mumble_channel_tree_add_channel(MumbleChannelTree *tree, MumbleChannel *channel, guint parent_id);
+void mumble_channel_tree_remove_subtree(MumbleChannelTree *tree, guint channel_id);
+MumbleChannel *mumble_channel_tree_get_channel(MumbleChannelTree *tree, guint channel_id);
 void mumble_channel_tree_free(MumbleChannelTree *tree);
 MumbleChannelTree *mumble_channel_tree_copy(MumbleChannelTree *tree);
 MumbleChannelTree *mumble_channel_tree_new();

@@ -44,8 +44,8 @@ typedef enum {
 } MumbleInputStreamError;
 
 MumbleMessage *mumble_input_stream_read_message_finish(MumbleInputStream *stream, GAsyncResult *result, GError **error);
-void mumble_input_stream_read_message_async(MumbleInputStream *stream, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer userData);
-GInputStream *mumble_input_stream_new(GInputStream *baseStream);
+void mumble_input_stream_read_message_async(MumbleInputStream *stream, GCancellable *cancellable, GAsyncReadyCallback callback, gpointer user_ata);
+GInputStream *mumble_input_stream_new(GInputStream *base_stream);
 GType mumble_input_stream_get_type();
 
 #endif
