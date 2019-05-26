@@ -1,0 +1,8 @@
+clang-tidy -config="{
+Checks: '-*,readability-identifier-naming',
+CheckOptions: [
+{key: readability-identifier-naming.VariableCase, value: lower_case},
+{key: readability-identifier-naming.ParameterCase, value: lower_case},
+{key: readability-identifier-naming.PointerParameterCase, value: lower_case},
+{key: readability-identifier-naming.MemberCase, value: lower_case}
+]}" -warnings-as-errors=readability-identifier-naming *.c
