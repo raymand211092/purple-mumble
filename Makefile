@@ -5,10 +5,10 @@ LDFLAGS := $(shell pkg-config --libs purple-3 libprotobuf-c)
 OBJECTS = mumble-channel.o mumble-channel-tree.o mumble-input-stream.o mumble-message.o mumble-output-stream.o mumble-protocol.o mumble-user.o mumble.pb-c.o utils.o plugin.o
 PLUGIN  = mumble.so
 
-.PHONY: clean install
+.PHONY: clean
 
 $(PLUGIN): $(OBJECTS)
-	gcc -shared $(LDFLAGS) -o $@ $^
+	$(CC) -shared $(LDFLAGS) -o $@ $^
 
 clean:
 	rm -f *.o $(PLUGIN)
