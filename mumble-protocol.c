@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018-2019  Petteri Pitkänen
+ * Copyright (C) 2018-2020  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include "mumble-message.h"
 #include "mumble-channel-tree.h"
 #include "utils.h"
+#include "protobuf-utils.h"
 #include "plugin.h"
 
 typedef struct {
@@ -40,43 +41,46 @@ typedef struct {
   guint session_id;
 } MumbleProtocolData;
 
-static void mumble_protocol_init(PurpleProtocol *);
-static void mumble_protocol_class_init(PurpleProtocolClass *);
+void mumble_protocol_register(PurplePlugin *);
 
-static void mumble_protocol_client_iface_init(PurpleProtocolClientIface *);
-static void mumble_protocol_server_iface_init(PurpleProtocolServerIface *);
-static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *);
-static void mumble_protocol_roomlist_iface_init(PurpleProtocolRoomlistIface *);
+static void mumble_protocol_init(MumbleProtocol *);
+static void mumble_protocol_class_init(MumbleProtocolClass *);
+static void mumble_protocol_class_finalize(MumbleProtocolClass *);
+
+static void mumble_protocol_client_interface_init(PurpleProtocolClientInterface *);
+static void mumble_protocol_server_interface_init(PurpleProtocolServerInterface *);
+static void mumble_protocol_chat_interface_init(PurpleProtocolChatInterface *);
+static void mumble_protocol_roomlist_interface_init(PurpleProtocolRoomlistInterface *);
 
 static void mumble_protocol_login(PurpleAccount *);
 static void mumble_protocol_close(PurpleConnection *);
 static GList *mumble_protocol_status_types(PurpleAccount *);
 static const char *mumble_protocol_list_icon(PurpleAccount *, PurpleBuddy *);
 
-static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversation *);
+static gssize mumble_protocol_client_interface_get_max_message_size(PurpleConversation *);
 
-static void mumble_protocol_server_iface_keepalive(PurpleConnection *connection);
-static int mumble_protocol_server_iface_get_keepalive_interval();
+static void mumble_protocol_server_interface_keepalive(PurpleConnection *connection);
+static int mumble_protocol_server_interface_get_keepalive_interval();
 
-static GList *mumble_protocol_chat_iface_info(PurpleConnection *);
-static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *, const char *);
-static void mumble_protocol_chat_iface_join(PurpleConnection *, GHashTable *);
-static void mumble_protocol_chat_iface_leave(PurpleConnection *, int);
-static int mumble_protocol_chat_iface_send(PurpleConnection *, int, PurpleMessage *);
+static GList *mumble_protocol_chat_interface_info(PurpleConnection *);
+static GHashTable *mumble_protocol_chat_interface_info_defaults(PurpleConnection *, const char *);
+static void mumble_protocol_chat_interface_join(PurpleConnection *, GHashTable *);
+static void mumble_protocol_chat_interface_leave(PurpleConnection *, int);
+static int mumble_protocol_chat_interface_send(PurpleConnection *, int, PurpleMessage *);
 
-static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection *);
+static PurpleRoomlist *mumble_protocol_roomlist_interface_get_list(PurpleConnection *);
 
-PURPLE_DEFINE_TYPE_EXTENDED(MumbleProtocol, mumble_protocol, PURPLE_TYPE_PROTOCOL, 0,
-  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_CLIENT_IFACE, mumble_protocol_client_iface_init)
-  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_SERVER_IFACE, mumble_protocol_server_iface_init)
-  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_CHAT_IFACE, mumble_protocol_chat_iface_init)
-  PURPLE_IMPLEMENT_INTERFACE_STATIC(PURPLE_TYPE_PROTOCOL_ROOMLIST_IFACE, mumble_protocol_roomlist_iface_init));
+G_DEFINE_DYNAMIC_TYPE_EXTENDED(MumbleProtocol, mumble_protocol, PURPLE_TYPE_PROTOCOL, 0,
+  G_IMPLEMENT_INTERFACE_DYNAMIC(PURPLE_TYPE_PROTOCOL_CLIENT, mumble_protocol_client_interface_init)
+  G_IMPLEMENT_INTERFACE_DYNAMIC(PURPLE_TYPE_PROTOCOL_SERVER, mumble_protocol_server_interface_init)
+  G_IMPLEMENT_INTERFACE_DYNAMIC(PURPLE_TYPE_PROTOCOL_CHAT, mumble_protocol_chat_interface_init)
+  G_IMPLEMENT_INTERFACE_DYNAMIC(PURPLE_TYPE_PROTOCOL_ROOMLIST, mumble_protocol_roomlist_interface_init));
 
 G_MODULE_EXPORT GType mumble_protocol_get_type(void);
 
 static void on_connected(GObject *, GAsyncResult *, gpointer);
 static void on_read(GObject *, GAsyncResult *, gpointer);
-static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, ProtobufCMessage *);
+static void write_mumble_message(MumbleProtocolData *, MumbleMessageType, GByteArray *);
 static PurpleCmdRet handle_join_cmd(PurpleConversation *, gchar *, gchar **, gchar **, MumbleProtocolData *);
 static PurpleCmdRet handle_channels_cmd(PurpleConversation *, gchar *, gchar **, gchar **, MumbleProtocolData *);
 static void register_cmd(MumbleProtocolData *, gchar *, gchar *, gchar *, PurpleCmdFunc);
@@ -84,7 +88,13 @@ static MumbleChannel *get_mumble_channel_by_id_string(MumbleChannelTree *, gchar
 static void join_channel(PurpleConnection *, MumbleChannel *);
 static GList *append_chat_entry(GList *, gchar *, gchar *, gboolean);
 
-static void mumble_protocol_init(PurpleProtocol *protocol) {
+void mumble_protocol_register(PurplePlugin *plugin) {
+  mumble_protocol_register_type(plugin);
+}
+
+static void mumble_protocol_init(MumbleProtocol *mumble_protocol) {
+  PurpleProtocol *protocol = PURPLE_PROTOCOL(mumble_protocol);
+
   protocol->id   = PROTOCOL_ID;
   protocol->name = "Mumble";
 
@@ -95,32 +105,37 @@ static void mumble_protocol_init(PurpleProtocol *protocol) {
   protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new(_("Port"), "port", 64738));
 }
 
-static void mumble_protocol_class_init(PurpleProtocolClass *protocol_class) {
+static void mumble_protocol_class_init(MumbleProtocolClass *mumble_protocol_class) {
+  PurpleProtocolClass *protocol_class = PURPLE_PROTOCOL_CLASS(mumble_protocol_class);
   protocol_class->login        = mumble_protocol_login;
   protocol_class->close        = mumble_protocol_close;
   protocol_class->status_types = mumble_protocol_status_types;
   protocol_class->list_icon    = mumble_protocol_list_icon;
 }
 
-static void mumble_protocol_client_iface_init(PurpleProtocolClientIface *iface) {
-  iface->get_max_message_size = mumble_protocol_client_iface_get_max_message_size;
+static void mumble_protocol_class_finalize(MumbleProtocolClass *mumble_protocol_class) {
+  /* Empty. */
 }
 
-static void mumble_protocol_server_iface_init(PurpleProtocolServerIface *iface) {
-  iface->keepalive              = mumble_protocol_server_iface_keepalive;
-  iface->get_keepalive_interval = mumble_protocol_server_iface_get_keepalive_interval;
+static void mumble_protocol_client_interface_init(PurpleProtocolClientInterface *interface) {
+  interface->get_max_message_size = mumble_protocol_client_interface_get_max_message_size;
 }
 
-static void mumble_protocol_chat_iface_init(PurpleProtocolChatIface *iface) {
-  iface->info          = mumble_protocol_chat_iface_info;
-  iface->info_defaults = mumble_protocol_chat_iface_info_defaults;
-  iface->join          = mumble_protocol_chat_iface_join;
-  iface->leave         = mumble_protocol_chat_iface_leave;
-  iface->send          = mumble_protocol_chat_iface_send;
+static void mumble_protocol_server_interface_init(PurpleProtocolServerInterface *interface) {
+  interface->keepalive              = mumble_protocol_server_interface_keepalive;
+  interface->get_keepalive_interval = mumble_protocol_server_interface_get_keepalive_interval;
 }
 
-static void mumble_protocol_roomlist_iface_init(PurpleProtocolRoomlistIface *iface) {
-  iface->get_list = mumble_protocol_roomlist_iface_get_list;
+static void mumble_protocol_chat_interface_init(PurpleProtocolChatInterface *interface) {
+  interface->info          = mumble_protocol_chat_interface_info;
+  interface->info_defaults = mumble_protocol_chat_interface_info_defaults;
+  interface->join          = mumble_protocol_chat_interface_join;
+  interface->leave         = mumble_protocol_chat_interface_leave;
+  interface->send          = mumble_protocol_chat_interface_send;
+}
+
+static void mumble_protocol_roomlist_interface_init(PurpleProtocolRoomlistInterface *interface) {
+  interface->get_list = mumble_protocol_roomlist_interface_get_list;
 }
 
 static void mumble_protocol_login(PurpleAccount *account) {
@@ -188,22 +203,20 @@ static const char *mumble_protocol_list_icon(PurpleAccount *account, PurpleBuddy
   return "mumble";
 }
 
-static gssize mumble_protocol_client_iface_get_max_message_size(PurpleConversation *conversation) {
+static gssize mumble_protocol_client_interface_get_max_message_size(PurpleConversation *conversation) {
   return 256;
 }
 
-static void mumble_protocol_server_iface_keepalive(PurpleConnection *connection) {
+static void mumble_protocol_server_interface_keepalive(PurpleConnection *connection) {
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
-
-  MumbleProto__Ping ping_message = MUMBLE_PROTO__PING__INIT;
-  write_mumble_message(protocol_data, MUMBLE_PING, (ProtobufCMessage *) &ping_message);
+  write_mumble_message(protocol_data, MUMBLE_PING, g_byte_array_new());
 }
 
-static int mumble_protocol_server_iface_get_keepalive_interval() {
+static int mumble_protocol_server_interface_get_keepalive_interval() {
   return 10;
 }
 
-static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
+static GList *mumble_protocol_chat_interface_info(PurpleConnection *connection) {
   GList *entries = NULL;
 
   entries = append_chat_entry(entries, _("Channel:"), "channel", FALSE);
@@ -212,7 +225,7 @@ static GList *mumble_protocol_chat_iface_info(PurpleConnection *connection) {
   return entries;
 }
 
-static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *connection, const char *chat_name) {
+static GHashTable *mumble_protocol_chat_interface_info_defaults(PurpleConnection *connection, const char *chat_name) {
   GHashTable *defaults = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, g_free);
   
   if (chat_name) {
@@ -222,7 +235,7 @@ static GHashTable *mumble_protocol_chat_iface_info_defaults(PurpleConnection *co
   return defaults;
 }
 
-static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashTable *components) {
+static void mumble_protocol_chat_interface_join(PurpleConnection *connection, GHashTable *components) {
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
 
   gchar *channel_name = g_hash_table_lookup(components, "channel");
@@ -246,30 +259,27 @@ static void mumble_protocol_chat_iface_join(PurpleConnection *connection, GHashT
   }
 }
 
-static void mumble_protocol_chat_iface_leave(PurpleConnection *connection, int id) {
+static void mumble_protocol_chat_interface_leave(PurpleConnection *connection, int id) {
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
 
   purple_serv_got_chat_left(connection, id);
   protocol_data->active_chat = NULL;
 }
 
-static int mumble_protocol_chat_iface_send(PurpleConnection *connection, int id, PurpleMessage *message) {
+static int mumble_protocol_chat_interface_send(PurpleConnection *connection, int id, PurpleMessage *message) {
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
 
-  MumbleProto__TextMessage text_message = MUMBLE_PROTO__TEXT_MESSAGE__INIT;
-  int ids[1] = { mumble_channel_tree_get_user_channel_id(protocol_data->tree, protocol_data->session_id) };
-  text_message.has_actor = 0;
-  text_message.n_channel_id = 1;
-  text_message.channel_id = ids;
-  text_message.message = purple_message_get_contents(message);
-  write_mumble_message(protocol_data, MUMBLE_TEXT_MESSAGE, (ProtobufCMessage *) &text_message);
+  GByteArray *text_message_message = g_byte_array_new();
+  encode_protobuf_unsigned_varint(text_message_message, 3, mumble_channel_tree_get_user_channel_id(protocol_data->tree, protocol_data->session_id));
+  encode_protobuf_string(text_message_message, 5, purple_message_get_contents(message));
+  write_mumble_message(protocol_data, MUMBLE_TEXT_MESSAGE, text_message_message);
 
   purple_serv_got_chat_in(connection, purple_chat_conversation_get_id(protocol_data->active_chat), protocol_data->user_name, purple_message_get_flags(message), purple_message_get_contents(message), time(NULL));
 
   return 0;
 }
 
-static PurpleRoomlist *mumble_protocol_roomlist_iface_get_list(PurpleConnection *connection) {
+static PurpleRoomlist *mumble_protocol_roomlist_interface_get_list(PurpleConnection *connection) {
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
 
   PurpleRoomlist *roomlist = purple_roomlist_new(purple_connection_get_account(connection));
@@ -342,20 +352,18 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
 
   mumble_input_stream_read_message_async(protocol_data->input_stream, protocol_data->cancellable, on_read, purple_connection);
 
-  MumbleProto__Version version_message = MUMBLE_PROTO__VERSION__INIT;
-  version_message.has_version = 1;
-  version_message.version = 0x010213;
-  version_message.release = "foo";
-  version_message.os = "bar";
-  version_message.os_version = "baz";
-  write_mumble_message(protocol_data, MUMBLE_VERSION, (ProtobufCMessage *) &version_message);
+  GByteArray *version_message = g_byte_array_new();
+  encode_protobuf_unsigned_varint(version_message, 1, 0x010213);
+  encode_protobuf_string(version_message, 2, "purple-mumble");
+  encode_protobuf_string(version_message, 3, "dummy");
+  encode_protobuf_string(version_message, 4, "dummy");
+  write_mumble_message(protocol_data, MUMBLE_VERSION, version_message);
 
-  MumbleProto__Authenticate authenticate_message = MUMBLE_PROTO__AUTHENTICATE__INIT;
-  authenticate_message.username = protocol_data->user_name;
-  write_mumble_message(protocol_data, MUMBLE_AUTHENTICATE, (ProtobufCMessage *) &authenticate_message);
+  GByteArray *authenticate_message = g_byte_array_new();
+  encode_protobuf_string(authenticate_message, 1, protocol_data->user_name);
+  write_mumble_message(protocol_data, MUMBLE_AUTHENTICATE, authenticate_message);
 
-  MumbleProto__Ping ping_message = MUMBLE_PROTO__PING__INIT;
-  write_mumble_message(protocol_data, MUMBLE_PING, (ProtobufCMessage *) &ping_message);
+  write_mumble_message(protocol_data, MUMBLE_PING, g_byte_array_new());
 
   purple_connection_set_state(purple_connection, PURPLE_CONNECTION_CONNECTED);
 }
@@ -372,73 +380,81 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   }
 
   switch (message->type) {
-    case MUMBLE_VERSION: {
-      MumbleProto__Version *version = (MumbleProto__Version *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_VERSION: version=%d release=%s os=%s os_version=%s", version->version, version->release, version->os, version->os_version);
-      break;
-    }
-    case MUMBLE_PING: {
-      MumbleProto__Ping *ping = (MumbleProto__Ping *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_PING: timestamp=%d good=%d late=%d lost=%d resync=%d udp_packets=%d tcp_packets=%d upd_ping_avg=%f udp_ping_var=%f tcp_ping_avg=%f tcp_ping_var=%f", ping->timestamp, ping->good, ping->late, ping->lost, ping->resync,
-        ping->udp_packets, ping->tcp_packets, ping->udp_ping_avg, ping->udp_ping_var, ping->tcp_ping_avg, ping->tcp_ping_var);
-      break;
-    }
-    case MUMBLE_REJECT: {
-      MumbleProto__Reject *reject = (MumbleProto__Reject *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_REJECT: type=%d reason=%s", reject->type, reject->reason);
-      break;
-    }
-    case MUMBLE_SERVER_SYNC: {
-      MumbleProto__ServerSync *server_sync = (MumbleProto__ServerSync *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_SERVER_SYNC: session=%d max_badwidth=%d welcome_text=%s permissions=%d", server_sync->session, server_sync->max_bandwidth, server_sync->welcome_text, server_sync->permissions);
-      break;
-    }
-    case MUMBLE_CHANNEL_REMOVE: {
-      MumbleProto__ChannelRemove *channel_remove = (MumbleProto__ChannelRemove *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_CHANNEL_REMOVE: channel_id=%d", channel_remove->channel_id);
-      break;
-    }
     case MUMBLE_CHANNEL_STATE: {
-      MumbleProto__ChannelState *channel_state = (MumbleProto__ChannelState *) message->payload;
+      GByteArray *payload = message->payload;
 
-      purple_debug_info("mumble", "MUMBLE_CHANNEL_STATE: channel_id=%d parent=%d name=%s description=%s temporary=%d position=%d max_users=%d", channel_state->channel_id, channel_state->parent, channel_state->name, channel_state->description,
-        channel_state->has_temporary ? channel_state->temporary : -1, channel_state->has_position ? channel_state->position : -1, channel_state->has_max_users ? channel_state->max_users : -1);
-      purple_debug_info("mumble", "Links:");
-      for (int index = 0; index < channel_state->n_links; index++) {
-        purple_debug_info("mumble", "%d", channel_state->links[index]);
-      }
-      purple_debug_info("mumble", "Links to add:");
-      for (int index = 0; index < channel_state->n_links_add; index++) {
-        purple_debug_info("mumble", "%d", channel_state->links_add[index]);
-      }
-      purple_debug_info("mumble", "Links to remove:");
-      for (int index = 0; index < channel_state->n_links_remove; index++) {
-        purple_debug_info("mumble", "%d", channel_state->links_remove[index]);
-      }
-
-      MumbleChannel *channel = mumble_channel_tree_get_channel(protocol_data->tree, channel_state->channel_id);
-      if (channel) {
-        if (channel_state->name) {
-          mumble_channel_set_name(channel, channel_state->name);
-          purple_debug_info("mumble", "Setting channel name to '%s'", channel->name);
+      guint64 channel_id = 0;
+      guint64 parent = 0;
+      gchar *name = NULL;
+      gchar *description = NULL;
+      GArray *links_remove = g_array_new(FALSE, FALSE, sizeof(guint64));
+      for (guint offset = 0; offset < payload->len;) {
+        guint field_number;
+        guint wire_type;
+        if (!decode_protobuf_tag(payload, &offset, &field_number, &wire_type)) {
+          break;
         }
-        for (int index = 0; index < channel_state->n_links_remove; index++) {
-          mumble_channel_tree_remove_subtree(protocol_data->tree, channel_state->links_remove[index]);
-          purple_debug_info("mumble", "Removing subtree %d", channel_state->links_remove[index]);
+        switch (field_number) {
+          case 1:
+            decode_protobuf_unsigned_varint(payload, &offset, &channel_id);
+            break;
+          case 2:
+            decode_protobuf_unsigned_varint(payload, &offset, &parent);
+            break;
+          case 3:
+            decode_protobuf_string(payload, &offset, &name);
+            break;
+          case 5:
+            decode_protobuf_string(payload, &offset, &description);
+            break;
+          case 7:
+            remember_protobuf_unsigned_varint(payload, &offset, links_remove);
+            break;
+          default:
+            skip_protobuf_value(payload, &offset, wire_type);
+            break;
+        }
+      }
+
+      MumbleChannel *channel = mumble_channel_tree_get_channel(protocol_data->tree, channel_id);
+      if (channel) {
+        if (name) {
+          mumble_channel_set_name(channel, name);
+        }
+        for (int index = 0; index < links_remove->len; index++) {
+          mumble_channel_tree_remove_subtree(protocol_data->tree, g_array_index(links_remove, guint64, index));
         }
       } else {
-        channel = mumble_channel_new(channel_state->channel_id, channel_state->name, channel_state->description);
-        mumble_channel_tree_add_channel(protocol_data->tree, channel, channel_state->parent);
-        purple_debug_info("mumble", "Adding channel %d->%d", channel_state->parent, channel_state->channel_id);
+        channel = mumble_channel_new(channel_id, name, description);
+        mumble_channel_tree_add_channel(protocol_data->tree, channel, parent);
       }
+
+      g_free(name);
+      g_free(description);
+      g_array_free(links_remove, TRUE);
       break;
     }
     case MUMBLE_USER_REMOVE: {
-      MumbleProto__UserRemove *user_remove = (MumbleProto__UserRemove *) message->payload;
+      GByteArray *payload = message->payload;
 
-      purple_debug_info("mumble", "MUMBLE_USER_REMOVE: session=%d actor=%d reason=%s ban=%d", user_remove->session, user_remove->actor, user_remove->reason, user_remove->ban);
+      guint64 session = 0;
+      for (guint offset = 0; offset < payload->len;) {
+        guint field_number;
+        guint wire_type;
+        if (!decode_protobuf_tag(payload, &offset, &field_number, &wire_type)) {
+          break;
+        }
+        switch (field_number) {
+          case 1:
+            decode_protobuf_unsigned_varint(payload, &offset, &session);
+            break;
+          default:
+            skip_protobuf_value(payload, &offset, wire_type);
+            break;
+        }
+      }
 
-      MumbleUser *user = mumble_channel_tree_get_user(protocol_data->tree, user_remove->session);
+      MumbleUser *user = mumble_channel_tree_get_user(protocol_data->tree, session);
       if (user) {
         if (protocol_data->active_chat) {
           if (user->channel_id == mumble_channel_tree_get_user_channel_id(protocol_data->tree, protocol_data->session_id)) {
@@ -450,34 +466,55 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       break;
     }
     case MUMBLE_USER_STATE: {
-      MumbleProto__UserState *user_state = (MumbleProto__UserState *) message->payload;
+      GByteArray *payload = message->payload;
 
-      purple_debug_info("mumble", "MUMBLE_USER_STATE: session=%d name=%s has_channel_id=%d channel_id=%d mute=%d deaf=%d suppress=%d self_mute=%d self_deaf=%d has_texture=%d comment=%s hash=%s has_comment_hash=%d has_texture_hash=%d priority_speaker=%d recording=%d",
-        user_state->session, user_state->name, user_state->has_channel_id, user_state->channel_id, user_state->mute, user_state->deaf, user_state->suppress, user_state->self_mute, user_state->self_deaf, user_state->has_texture, user_state->comment, user_state->hash, user_state->has_comment_hash,
-        user_state->has_texture_hash, user_state->priority_speaker, user_state->recording);
+      guint64 session = 0;
+      gboolean has_channel_id = FALSE;
+      guint64 channel_id = 0;
+      gchar *name = NULL;
+      for (guint offset = 0; offset < payload->len;) {
+        guint field_number;
+        guint wire_type;
+        if (!decode_protobuf_tag(payload, &offset, &field_number, &wire_type)) {
+          break;
+        }
+        switch (field_number) {
+          case 1:
+            decode_protobuf_unsigned_varint(payload, &offset, &session);
+            break;
+          case 3:
+            decode_protobuf_string(payload, &offset, &name);
+            break;
+          case 5:
+            decode_protobuf_unsigned_varint(payload, &offset, &channel_id);
+            has_channel_id = TRUE;
+            break;
+          default:
+            skip_protobuf_value(payload, &offset, wire_type);
+            break;
+        }
+      }
 
-      MumbleUser *user = mumble_channel_tree_get_user(protocol_data->tree, user_state->session);
+      MumbleUser *user = mumble_channel_tree_get_user(protocol_data->tree, session);
       if (user) {
-        purple_debug_info("mumble", "Modifying user name='%s' session_id=%d channel_id=%d", user->name, user->session_id, user->channel_id);
-        if (user_state->has_channel_id && (user_state->channel_id != user->channel_id)) {
-          if (user_state->session == protocol_data->session_id) {
-            join_channel(connection, mumble_channel_tree_get_channel(protocol_data->tree, user_state->channel_id));
+        if (has_channel_id && (channel_id != user->channel_id)) {
+          if (session == protocol_data->session_id) {
+            join_channel(connection, mumble_channel_tree_get_channel(protocol_data->tree, channel_id));
           } else {
             if (protocol_data->active_chat) {
-              guint channel_id = mumble_channel_tree_get_user_channel_id(protocol_data->tree, protocol_data->session_id);
-              if (user->channel_id == channel_id) {
+              guint active_channel_id = mumble_channel_tree_get_user_channel_id(protocol_data->tree, protocol_data->session_id);
+              if (user->channel_id == active_channel_id) {
                 purple_chat_conversation_remove_user(protocol_data->active_chat, user->name, NULL);
-              } else if (user_state->channel_id == channel_id) {
+              } else if (channel_id == active_channel_id) {
                 purple_chat_conversation_add_user(protocol_data->active_chat, user->name, NULL, 0, FALSE);
               }
             }
           }
           
-          user->channel_id = user_state->channel_id;
+          user->channel_id = channel_id;
         }
-        purple_debug_info("mumble", "Modified user name='%s' session_id=%d channel_id=%d", user->name, user->session_id, user->channel_id);
       } else {
-        user = mumble_user_new(user_state->session, user_state->name, user_state->channel_id);
+        user = mumble_user_new(session, name, channel_id);
         mumble_channel_tree_add_user(protocol_data->tree, user);
 
         if (!g_strcmp0(protocol_data->user_name, user->name)) {
@@ -489,99 +526,47 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
             purple_chat_conversation_add_user(protocol_data->active_chat, user->name, NULL, 0, FALSE);
           }
         }
-
-        purple_debug_info("mumble", "Adding user name='%s' session_id=%d channel_id=%d", user->name, user->session_id, user->channel_id);
       }
-      break;
-    }
-    case MUMBLE_BAN_LIST: {
-      MumbleProto__BanList *ban_list = (MumbleProto__BanList *) message->payload;
 
-      purple_debug_info("mumble", "MUMBLE_BAN_LIST: query=%d", ban_list->query);
-      for (int index = 0; index < ban_list->n_bans; index++) {
-        MumbleProto__BanList__BanEntry *entry = ban_list->bans[index];
-        purple_debug_info("mumble", "address= mask=%d name=%s hash=%s reason=%s start=%s duration=%d", entry->mask, entry->mask, entry->hash, entry->reason, entry->start, entry->duration);
-      }
+      g_free(name);
       break;
     }
     case MUMBLE_TEXT_MESSAGE: {
-      MumbleProto__TextMessage *text_message = (MumbleProto__TextMessage *) message->payload;
+      GByteArray *payload = message->payload;
 
-      purple_debug_info("mumble", "MUMBLE_TEXT_MESSAGE: actor=%d message=%s", text_message->has_actor ? text_message->actor : -1, text_message->message);
-
-      MumbleUser *actor = mumble_channel_tree_get_user(protocol_data->tree, text_message->actor);
-
-      purple_serv_got_chat_in(connection, purple_chat_conversation_get_id(protocol_data->active_chat), actor->name, 0, text_message->message, time(NULL));
-      break;
-    }
-    case MUMBLE_PERMISSION_DENIED: {
-      MumbleProto__PermissionDenied *permission_denied = (MumbleProto__PermissionDenied *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_PERMISSION_DENIED: permission=%d channel_id=%d session=%d reason=%s type=%d name=%s", permission_denied->permission, permission_denied->channel_id, permission_denied->session, permission_denied->reason,
-        permission_denied->type, permission_denied->name);
-      break;
-    }
-    case MUMBLE_CRYPT_SETUP: {
-      break;
-    }
-    case MUMBLE_ACL: {
-      MumbleProto__ACL *acl = (MumbleProto__ACL *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_ACL: channel_id=%d inherit_acls=%d query=%d", acl->inherit_acls, acl->query);
-      purple_debug_info("mumble", "User group specifications:");
-      for (int index = 0; index < acl->n_groups; index++) {
-        MumbleProto__ACL__ChanGroup *group = acl->groups[index];
-        purple_debug_info("mumble", "name=%s inherited=%d inherit=%d inheritable=%d");
-        purple_debug_info("mumble", "Users explicitly included in this group:");
-        for (int user_index = 0; user_index < group->n_add; user_index++) {
-          purple_debug_info("mumble", "%d", group->add[user_index]);
+      guint64 actor_value = 0;
+      gchar *text_message = NULL;
+      for (guint offset = 0; offset < payload->len;) {
+        guint field_number;
+        guint wire_type;
+        if (!decode_protobuf_tag(payload, &offset, &field_number, &wire_type)) {
+          break;
         }
-        purple_debug_info("mumble", "Users explicitly removed from this group:");
-        for (int user_index = 0; user_index < group->n_remove; user_index++) {
-          purple_debug_info("mumble", "%d", group->remove[user_index]);
-        }
-        purple_debug_info("mumble", "Users inherited:");
-        for (int user_index = 0; user_index < group->n_inherited_members; user_index++) {
-          purple_debug_info("mumble", "%d", group->inherited_members[user_index]);
+        switch (field_number) {
+          case 1:
+            decode_protobuf_unsigned_varint(payload, &offset, &actor_value);
+            break;
+          case 5:
+            decode_protobuf_string(payload, &offset, &text_message);
+            break;
+          default:
+            skip_protobuf_value(payload, &offset, wire_type);
+            break;
         }
       }
-      purple_debug_info("mumble", "ACL specifications");
-      for (int index = 0; index < acl->n_acls; index++) {
-        MumbleProto__ACL__ChanACL *channel_acl = acl->acls[index];
-        purple_debug_info("mumble", "apply_here=%d apply_subs=%d inherited=%d user_id=%d group=%s grant=%d deny=%d", channel_acl->apply_here, channel_acl->apply_subs, channel_acl->inherited, channel_acl->user_id, channel_acl->group, channel_acl->grant, channel_acl->deny);
-      }
-      break;
-    }
-    case MUMBLE_PERMISSION_QUERY: {
-      MumbleProto__PermissionQuery *permission_query = (MumbleProto__PermissionQuery *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_PERMISSION_QUERY: channel_id=%d permissions=%d flush=%d", permission_query->channel_id, permission_query->permissions, permission_query->flush);
-      break;
-    }
-    case MUMBLE_CODEC_VERSION: {
-      MumbleProto__CodecVersion *codec_version = (MumbleProto__CodecVersion *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_CODEC_VERSION: alpha=%d beta=%d prefer_alpha=%d opus=%d", codec_version->alpha, codec_version->beta, codec_version->prefer_alpha, codec_version->opus);
-      break;
-    }
-    case MUMBLE_USER_STATS: {
-      MumbleProto__UserStats *user_stats = (MumbleProto__UserStats *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_USER_STATS: session=%d stats_only=%d n_certificates=%d udp_packets=%d tcp_packets=%d udp_ping_avg=%f udp_ping_var=%f tcp_ping_avg=%f tcp_ping_var=%f n_celt_versions=%d address= bandwidth=%d onlinesecs=%d idlesecs=%d strong_certificate=%d opus=%d",
-        user_stats->session, user_stats->stats_only, user_stats->udp_packets, user_stats->tcp_packets, user_stats->udp_ping_avg, user_stats->udp_ping_var, user_stats->tcp_ping_avg, user_stats->tcp_ping_var, user_stats->n_celt_versions, user_stats->bandwidth,
-        user_stats->onlinesecs, user_stats->idlesecs, user_stats->strong_certificate, user_stats->opus);
-      purple_debug_info("mumble", "Statistics for packets received from client: good=%d late=%d lost=%d resync=%d", user_stats->from_client->good, user_stats->from_client->late, user_stats->from_client->lost, user_stats->from_client->resync);
-      purple_debug_info("mumble", "Statistics for packets sent by server: good=%d late=%d lost=%d resync=%d", user_stats->from_server->good, user_stats->from_server->late, user_stats->from_server->lost, user_stats->from_server->resync);
-      break;
-    }
-    case MUMBLE_SERVER_CONFIG: {
-      MumbleProto__ServerConfig *server_config = (MumbleProto__ServerConfig *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_SERVER_CONFIG: max_bandwidth=%d welcome_text=%s allow_html=%d message_length=%d image_message_length=%d max_users=%d", server_config->max_bandwidth, server_config->welcome_text, server_config->allow_html,
-        server_config->message_length, server_config->image_message_length, server_config->max_users);
-      break;
-    }
-    case MUMBLE_SUGGEST_CONFIG: {
-      MumbleProto__SuggestConfig *suggest_config = (MumbleProto__SuggestConfig *) message->payload;
-      purple_debug_info("mumble", "MUMBLE_SUGGEST_CONFIG: version=%d positional=%d push_to_talk=%d", suggest_config->version, suggest_config->positional, suggest_config->push_to_talk);
+
+      MumbleUser *actor = mumble_channel_tree_get_user(protocol_data->tree, actor_value);
+      purple_serv_got_chat_in(connection, purple_chat_conversation_get_id(protocol_data->active_chat), actor->name, 0, text_message, time(NULL));
+
+      g_free(text_message);
       break;
     }
     default: {
       purple_debug_info("mumble", "Read message of type %d", message->type);
+      GString *protobuf_debug_info = g_string_new(NULL);
+      append_protobuf_debug_info(protobuf_debug_info, message->payload);
+      purple_debug_info("mumble", protobuf_debug_info->str);
+      g_string_free(protobuf_debug_info, TRUE);
       break;
     }
   }
@@ -659,13 +644,10 @@ static void join_channel(PurpleConnection *connection, MumbleChannel *channel) {
     if (!already_joined) {
       mumble_channel_tree_set_user_channel_id(protocol_data->tree, protocol_data->session_id, channel->id);
 
-      MumbleProto__UserState user_state = MUMBLE_PROTO__USER_STATE__INIT;
-      user_state.has_session = TRUE;
-      user_state.session = protocol_data->session_id;
-      user_state.has_actor = FALSE;
-      user_state.has_channel_id = TRUE;
-      user_state.channel_id = channel->id;
-      write_mumble_message(protocol_data, MUMBLE_USER_STATE, (ProtobufCMessage *) &user_state);
+      GByteArray *user_state_message = g_byte_array_new();
+      encode_protobuf_unsigned_varint(user_state_message, 1, protocol_data->session_id);
+      encode_protobuf_unsigned_varint(user_state_message, 5, channel->id);
+      write_mumble_message(protocol_data, MUMBLE_USER_STATE, user_state_message);
     }
 
     if (has_active_chat) {
@@ -693,7 +675,7 @@ static GList *append_chat_entry(GList *entries, gchar *label, gchar *identifier,
   return g_list_append(entries, entry);
 }
 
-static void write_mumble_message(MumbleProtocolData *protocol_data, MumbleMessageType type, ProtobufCMessage *payload) {
+static void write_mumble_message(MumbleProtocolData *protocol_data, MumbleMessageType type, GByteArray *payload) {
   MumbleMessage *message = mumble_message_new(type, payload);
   mumble_output_stream_write_message_async(protocol_data->output_stream, message, protocol_data->cancellable, NULL, NULL);
 }

@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018  Petteri Pitkänen
+ * Copyright (C) 2018-2020  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,35 +19,6 @@
 
 #include "mumble-message.h"
 
-ProtobufCMessageDescriptor *type_to_descriptor[] = {
-  &mumble_proto__version__descriptor,
-  &mumble_proto__udptunnel__descriptor,
-  &mumble_proto__authenticate__descriptor,
-  &mumble_proto__ping__descriptor,
-  &mumble_proto__reject__descriptor,
-  &mumble_proto__server_sync__descriptor,
-  &mumble_proto__channel_remove__descriptor,
-  &mumble_proto__channel_state__descriptor,
-  &mumble_proto__user_remove__descriptor,
-  &mumble_proto__user_state__descriptor,
-  &mumble_proto__ban_list__descriptor,
-  &mumble_proto__text_message__descriptor,
-  &mumble_proto__permission_denied__descriptor,
-  &mumble_proto__acl__descriptor,
-  &mumble_proto__query_users__descriptor,
-  &mumble_proto__crypt_setup__descriptor,
-  &mumble_proto__context_action_modify__descriptor,
-  &mumble_proto__context_action__descriptor,
-  &mumble_proto__user_list__descriptor,
-  &mumble_proto__voice_target__descriptor,
-  &mumble_proto__permission_query__descriptor,
-  &mumble_proto__codec_version__descriptor,
-  &mumble_proto__user_stats__descriptor,
-  &mumble_proto__request_blob__descriptor,
-  &mumble_proto__server_config__descriptor,
-  &mumble_proto__suggest_config__descriptor
-};
-
 G_DEFINE_BOXED_TYPE(MumbleMessage, mumble_message, mumble_message_copy, mumble_message_free)
 
 MumbleMessage *mumble_message_read(guint8 *buffer, guint length) {
@@ -57,8 +28,9 @@ MumbleMessage *mumble_message_read(guint8 *buffer, guint length) {
     guint message_length = mumble_message_get_minimum_bytes(buffer, length);
 
     if (length >= message_length) {
-      message = mumble_message_new(type, protobuf_c_message_unpack(type_to_descriptor[type], NULL, message_length - 6, buffer + 6));
-      message->unpacked = TRUE;
+      GByteArray *payload = g_byte_array_new();
+      g_byte_array_append(payload, buffer + 6, message_length - 6);
+      message = mumble_message_new(type, payload);
     }
   }
   return message;
@@ -76,7 +48,7 @@ guint mumble_message_get_minimum_bytes(guint8 *buffer, guint partial_length) {
 }
 
 gint mumble_message_write(MumbleMessage *message, guint8 *buffer) {
-  gint packed_size = protobuf_c_message_get_packed_size(message->payload);
+  gint packed_size = message->payload->len;
 
   buffer[0] = 0;
   buffer[1] = message->type;
@@ -84,24 +56,22 @@ gint mumble_message_write(MumbleMessage *message, guint8 *buffer) {
   buffer[3] = packed_size >> 16;
   buffer[4] = packed_size >> 8;
   buffer[5] = packed_size;
+  memcpy(buffer + 6, message->payload->data, packed_size);
 
-  return 6 + protobuf_c_message_pack(message->payload, buffer + 6);
+  return 6 + packed_size;
 }
 
 void mumble_message_free(MumbleMessage *message) {
-  if (message->unpacked) {
-    protobuf_c_message_free_unpacked(message->payload, NULL);
-  }
+  g_byte_array_unref(message->payload);
   g_free(message);
 }
 
 MumbleMessage *mumble_message_copy(MumbleMessage *message) {
   MumbleMessage *copy = mumble_message_new(message->type, message->payload);
-  copy->unpacked = message->unpacked;
   return copy;
 }
 
-MumbleMessage *mumble_message_new(MumbleMessageType type, ProtobufCMessage *protobuf_message) {
+MumbleMessage *mumble_message_new(MumbleMessageType type, GByteArray *protobuf_message) {
   MumbleMessage *message = g_new0(MumbleMessage, 1);
 
   message->type = type;

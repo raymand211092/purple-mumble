@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018-2019  Petteri Pitkänen
+ * Copyright (C) 2018-2020  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ static PurplePluginInfo *plugin_query(GError **error) {
 }
 
 static gboolean plugin_load(PurplePlugin *plugin, GError **error) {
-  mumble_protocol_register_type(plugin);
+  mumble_protocol_register(plugin);
   
   purple_protocol = purple_protocols_add(MUMBLE_TYPE_PROTOCOL, error);
   if (!purple_protocol) {

@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018  Petteri Pitkänen
+ * Copyright (C) 2018-2020  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,6 +45,6 @@ typedef struct _MumbleProtocolClass {
 } MumbleProtocolClass;
 
 GType mumble_protocol_get_type();
-void mumble_protocol_register_type(PurplePlugin *);
+void mumble_protocol_register(PurplePlugin *);
 
 #endif

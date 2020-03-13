@@ -1,6 +1,6 @@
 /*
  * purple-mumble -- Mumble protocol plugin for libpurple
- * Copyright (C) 2018  Petteri Pitkänen
+ * Copyright (C) 2018-2020  Petteri Pitkänen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,8 +21,6 @@
 #define MUMBLE_MESSAGE_H
 
 #include <glib-object.h>
-#include <protobuf-c/protobuf-c.h>
-#include "mumble.pb-c.h"
 
 /**
  * SECTION:mumblemessage
@@ -105,9 +103,7 @@ typedef enum {
  */
 typedef struct _MumbleMessage {
   MumbleMessageType type;
-  ProtobufCMessage *payload;
-  /*< private >*/
-  gboolean unpacked;
+  GByteArray *payload;
 } MumbleMessage;
 
 GType mumble_message_get_type(void);
@@ -168,12 +164,12 @@ MumbleMessage *mumble_message_copy(MumbleMessage *message);
 /**
  * mumble_message_new:
  * @type:    Message type
- * @payload: Payload as #ProtobufCMessage
+ * @payload: Payload as #GByteArray
  *
  * Create new #MumbleMessage.
  *
  * Returns: New #MumbleMessage
  */
-MumbleMessage *mumble_message_new(MumbleMessageType type, ProtobufCMessage *payload);
+MumbleMessage *mumble_message_new(MumbleMessageType type, GByteArray *payload);
 
 #endif
