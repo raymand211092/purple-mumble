@@ -190,6 +190,8 @@ static void mumble_protocol_close(PurpleConnection *connection) {
   g_free(protocol_data->user_name);
   g_free(protocol_data->server);
   g_free(protocol_data);
+
+  purple_connection_set_protocol_data(connection, 0);
 }
 
 static GList *mumble_protocol_status_types(PurpleAccount *account) {
@@ -371,6 +373,10 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
 static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
   PurpleConnection *connection = data;
   MumbleProtocolData *protocol_data = purple_connection_get_protocol_data(connection);
+
+  if (!protocol_data) {
+    return;
+  }
 
   GError *error = NULL;
   MumbleMessage *message = mumble_input_stream_read_message_finish(protocol_data->input_stream, result, &error);
