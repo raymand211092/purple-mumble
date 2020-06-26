@@ -17,7 +17,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <glib/gi18n.h>
 #include "mumble-input-stream.h"
 
 #define MAX_MESSAGE_SIZE (256 * 1024)
@@ -74,7 +73,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer user_data) {
 
   if (count <= 0) {
     if (!error) {
-      error = g_error_new(MUMBLE_INPUT_STREAM_ERROR, MUMBLE_INPUT_STREAM_ERROR_SERVER_CLOSED_CONNECTION, _("Server closed the connection"));
+      error = g_error_new(MUMBLE_INPUT_STREAM_ERROR, MUMBLE_INPUT_STREAM_ERROR_SERVER_CLOSED_CONNECTION, "Server closed the connection");
     }
 
     g_task_return_error(task, error);
@@ -96,7 +95,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer user_data) {
     if (length <= MAX_MESSAGE_SIZE) {
       start_read(stream, task, length - priv->offset);
     } else {
-      g_task_return_error(task, g_error_new(MUMBLE_INPUT_STREAM_ERROR, MUMBLE_INPUT_STREAM_ERROR_MAX_MESSAGE_SIZE_EXCEEDED, _("Maximum message size exceeded")));
+      g_task_return_error(task, g_error_new(MUMBLE_INPUT_STREAM_ERROR, MUMBLE_INPUT_STREAM_ERROR_MAX_MESSAGE_SIZE_EXCEEDED, "Maximum message size exceeded"));
       g_object_unref(task);
     }
   }

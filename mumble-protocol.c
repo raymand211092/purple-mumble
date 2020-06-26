@@ -17,7 +17,6 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <glib/gi18n.h>
 #include <purple.h>
 #include "mumble-input-stream.h"
 #include "mumble-output-stream.h"
@@ -100,9 +99,9 @@ static void mumble_protocol_init(MumbleProtocol *mumble_protocol) {
 
   protocol->options = OPT_PROTO_PASSWORD_OPTIONAL;
 
-  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new(_("Server"), "localhost", '@'));
+  protocol->user_splits = g_list_append(protocol->user_splits, purple_account_user_split_new("Server", "localhost", '@'));
 
-  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new(_("Port"), "port", 64738));
+  protocol->account_options = g_list_append(protocol->account_options, purple_account_option_int_new("Port", "port", 64738));
 }
 
 static void mumble_protocol_class_init(MumbleProtocolClass *mumble_protocol_class) {
@@ -143,7 +142,9 @@ static void mumble_protocol_login(PurpleAccount *account) {
   
   MumbleProtocolData *protocol_data = g_new0(MumbleProtocolData, 1);
   purple_connection_set_protocol_data(connection, protocol_data);
-  
+
+  purple_connection_set_flags(connection, PURPLE_CONNECTION_FLAG_HTML);
+
   gchar **parts = g_strsplit(purple_account_get_username(account), "@", 2);
   protocol_data->user_name = g_strdup(parts[0]);
   protocol_data->server = g_strdup(parts[1]);
@@ -221,8 +222,8 @@ static int mumble_protocol_server_interface_get_keepalive_interval() {
 static GList *mumble_protocol_chat_interface_info(PurpleConnection *connection) {
   GList *entries = NULL;
 
-  entries = append_chat_entry(entries, _("Channel:"), "channel", FALSE);
-  entries = append_chat_entry(entries, _("ID"), "id", FALSE);
+  entries = append_chat_entry(entries, "Channel:", "channel", FALSE);
+  entries = append_chat_entry(entries, "ID", "id", FALSE);
 
   return entries;
 }
@@ -253,8 +254,8 @@ static void mumble_protocol_chat_interface_join(PurpleConnection *connection, GH
   if (channel) {
     join_channel(connection, channel);
   } else {
-    gchar *error = g_strdup_printf(_("%s is not a valid channel name"), channel_name);
-    purple_notify_error(connection, _("Invalid channel name"), _("Invalid channel name"), error, NULL);
+    gchar *error = g_strdup_printf("%s is not a valid channel name", channel_name);
+    purple_notify_error(connection, "Invalid channel name", "Invalid channel name", error, NULL);
     g_free(error);
 
     purple_serv_got_join_chat_failed(connection, components);
@@ -288,8 +289,8 @@ static PurpleRoomlist *mumble_protocol_roomlist_interface_get_list(PurpleConnect
 
   GList *fields = NULL;
   fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "", "channel", TRUE));
-  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, _("Description"), "description", FALSE));
-  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, _("ID"), "id", FALSE));
+  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_STRING, "Description", "description", FALSE));
+  fields = g_list_append(fields, purple_roomlist_field_new(PURPLE_ROOMLIST_FIELD_INT, "ID", "id", FALSE));
 
   purple_roomlist_set_fields(roomlist, fields);
 
@@ -340,9 +341,9 @@ static void on_connected(GObject *source, GAsyncResult *result, gpointer data) {
     return;
   }
 
-  register_cmd(protocol_data, "join", "w", _("join &lt;channel name&gt;:  Join a channel"), handle_join_cmd);
-  register_cmd(protocol_data, "join-id", "w", _("join-id &lt;channel ID&gt;:  Join a channel"), handle_join_cmd);
-  register_cmd(protocol_data, "channels", "", _("channels:  List channels"), handle_channels_cmd);
+  register_cmd(protocol_data, "join", "w", "join &lt;channel name&gt;:  Join a channel", handle_join_cmd);
+  register_cmd(protocol_data, "join-id", "w", "join-id &lt;channel ID&gt;:  Join a channel", handle_join_cmd);
+  register_cmd(protocol_data, "channels", "", "channels:  List channels", handle_channels_cmd);
 
   protocol_data->tree = mumble_channel_tree_new();
   protocol_data->session_id = -1;
@@ -562,7 +563,7 @@ static void on_read(GObject *source, GAsyncResult *result, gpointer data) {
       }
 
       MumbleUser *actor = mumble_channel_tree_get_user(protocol_data->tree, actor_value);
-      purple_serv_got_chat_in(connection, purple_chat_conversation_get_id(protocol_data->active_chat), actor->name, 0, text_message, time(NULL));
+      purple_serv_got_chat_in(connection, purple_chat_conversation_get_id(protocol_data->active_chat), actor->name, PURPLE_MESSAGE_RECV, text_message, time(NULL));
 
       g_free(text_message);
       break;
@@ -591,7 +592,7 @@ static PurpleCmdRet handle_join_cmd(PurpleConversation *conversation, gchar *cmd
   }
 
   if (!channel) {
-    *error = g_strdup(_("No such channel"));
+    *error = g_strdup("No such channel");
     return PURPLE_CMD_RET_FAILED;
   }
 
@@ -608,11 +609,11 @@ static PurpleCmdRet handle_channels_cmd(PurpleConversation *conversation, gchar 
     MumbleChannel *channel = node->data;
     int parent_id = mumble_channel_tree_get_parent_id(protocol_data->tree, channel->id);
 
-    g_string_append_with_delimiter(message, g_strdup_printf(_("Name: %s"), channel->name), "<br><br>");
-    g_string_append_with_delimiter(message, g_strdup_printf(_("Description: %s"), channel->description), "<br>");
-    g_string_append_with_delimiter(message, g_strdup_printf(_("ID: %d"), channel->id), "<br>");
+    g_string_append_with_delimiter(message, g_strdup_printf("Name: %s", channel->name), "<br><br>");
+    g_string_append_with_delimiter(message, g_strdup_printf("Description: %s", channel->description), "<br>");
+    g_string_append_with_delimiter(message, g_strdup_printf("ID: %d", channel->id), "<br>");
     if (parent_id >= 0) {
-      g_string_append_with_delimiter(message, g_strdup_printf(_("Parent: %d"), parent_id), "<br>");
+      g_string_append_with_delimiter(message, g_strdup_printf("Parent: %d", parent_id), "<br>");
     }
   }
 
